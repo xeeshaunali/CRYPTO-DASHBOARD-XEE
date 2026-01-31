@@ -1,0 +1,949 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>SUPER BOT v4 – Signals, Rotation & Real-Time Order Flow</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- Bootstrap CSS + JS Bundle (includes Popper) -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <style>
+        .positive { color: green; font-weight: bold; }
+        .negative { color: red; font-weight: bold; }
+        .signal-bullish { color: #0f5132; font-weight: bold; background-color: #d1e7dd; }
+        .signal-bearish { color: #842029; font-weight: bold; background-color: #f8d7da; }
+        .signal-watch { color: #664d03; font-weight: bold; background-color: #fff3cd; }
+        .imbalance-pos { color: green; font-weight: bold; }
+        .imbalance-neg { color: red; font-weight: bold; }
+        table { font-size: 0.9em; }
+        .card { margin-bottom: 1rem; }
+    </style>
+</head>
+<body>
+<div class="container mt-4">
+    <h1 class="text-center text-primary mb-4">SUPER BOT v4 – Signals, Rotation & Real-Time Order Flow</h1>
+
+    <!-- Live Symbol Selector for Real-Time Tabs -->
+    <div class="row mb-4">
+        <div class="col-md-5">
+            <label class="form-label fw-bold">Live Symbol for Order Book & Trades</label>
+            <input id="liveSymbol" class="form-control" value="BTC/USDT" placeholder="e.g. SOL/USDT, PHB/USDT">
+        </div>
+        <div class="col-md-3 d-flex align-items-end">
+            <button class="btn btn-primary w-100" onclick="setLiveSymbol()">Set Live Symbol</button>
+        </div>
+        <div class="col-md-4 d-flex align-items-end">
+            <div id="liveSymbolStatus" class="ms-3 text-muted fst-italic"></div>
+        </div>
+    </div>
+
+    <ul class="nav nav-tabs mb-4" id="mainTabs">
+        <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#ohlcv">OHLCV</a></li>
+        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#signals">Signals</a></li>
+        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#gainers">Gainers</a></li>
+        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#losers">Losers</a></li>
+        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#rotation">Rotation</a></li>
+        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#orderbook">Order Book (Live)</a></li>
+        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#trades">Trades (Live)</a></li>
+        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#predictions">Predictions</a></li>
+        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#system">System</a></li>
+        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#symbols">Symbols</a></li>
+        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#trainBot">Train Bot</a></li>
+        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#predictCandle">Predict Candle</a></li>
+    </ul>
+
+    <div class="tab-content">
+        <!-- OHLCV -->
+        <div class="tab-pane fade show active" id="ohlcv">
+            <div class="row g-3 mb-3">
+                <div class="col-md-4">
+                    <input id="symbol" class="form-control" value="BTC/USDT" placeholder="e.g. PHB/USDT">
+                </div>
+                <div class="col-md-3">
+                    <select id="timeframe" class="form-control">
+                        <option value="1m">1m</option>
+                        <option value="5m">5m</option>
+                        <option value="15m">15m</option>
+                        <option value="1h">1h</option>
+                        <option value="4h" selected>4h</option>
+                        <option value="1d">1d</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small">From Year</label>
+                    <input type="number" id="fromYear" class="form-control" min="2000" max="2100">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small">To Year</label>
+                    <input type="number" id="toYear" class="form-control" min="2000" max="2100">
+                </div>
+                <div class="col-md-1 d-flex align-items-end">
+                    <button class="btn btn-success w-100" onclick="fetchOHLCV()">Fetch Live</button>
+                </div>
+            </div>
+            <button class="btn btn-warning mb-3" onclick="loadFromDB()">Load from DB</button>
+            <div id="ohlcvAlert"></div>
+            <table class="table table-sm table-bordered table-striped">
+                <thead class="table-dark">
+                    <tr><th>#</th><th>Time (UTC)</th><th>Open</th><th>High</th><th>Low</th><th>Close</th><th>Volume</th><th>Vol Change</th></tr>
+                </thead>
+                <tbody id="ohlcvBody"></tbody>
+            </table>
+        </div>
+
+        <!-- SIGNALS -->
+        <div class="tab-pane fade" id="signals">
+            <div class="row g-3 mb-4">
+                <div class="col-md-4">
+                    <input id="signalSymbol" class="form-control" value="BTC/USDT">
+                </div>
+                <div class="col-md-3">
+                    <select id="signalTimeframe" class="form-control">
+                        <option value="15m">15m</option>
+                        <option value="1h">1h</option>
+                        <option value="4h" selected>4h</option>
+                        <option value="1d">1d</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <button class="btn btn-primary w-100" onclick="analyzeSymbol()">Analyze</button>
+                </div>
+            </div>
+            <div id="signalAlert"></div>
+            <div class="card mb-4">
+                <div class="card-header">Latest Candle & Indicators</div>
+                <div class="card-body" id="signalDetails">
+                    <p class="text-muted mb-0">Run analysis to see RSI / MACD / EMAs and signal here.</p>
+                </div>
+            </div>
+            <h4>Signals for Today's Top Gainers</h4>
+            <button class="btn btn-success mb-3" onclick="loadGainerSignals()">Scan Gainers</button>
+            <div id="gainerSignalsAlert"></div>
+            <table class="table table-bordered table-sm">
+                <thead class="table-success">
+                    <tr>
+                        <th>#</th><th>Symbol</th><th>24h %</th><th>Volume</th><th>Close</th><th>RSI</th><th>Signal</th><th>Score</th>
+                    </tr>
+                </thead>
+                <tbody id="gainerSignalsBody"></tbody>
+            </table>
+        </div>
+
+        <!-- GAINERS -->
+        <div class="tab-pane fade" id="gainers">
+            <div class="text-center my-3">
+                <button class="btn btn-success" onclick="refreshGainersLosers()">Refresh Gainers & Losers</button>
+                <div id="gainersAlert" class="mt-3"></div>
+            </div>
+            <table class="table table-bordered">
+                <thead class="table-success">
+                    <tr><th>#</th><th>Symbol</th><th>Price</th><th>24h %</th><th>Volume</th></tr>
+                </thead>
+                <tbody id="gainersBody"></tbody>
+            </table>
+        </div>
+
+        <!-- LOSERS -->
+        <div class="tab-pane fade" id="losers">
+            <div class="text-center my-3">
+                <button class="btn btn-danger" onclick="refreshGainersLosers()">Refresh Gainers & Losers</button>
+                <div id="losersAlert" class="mt-3"></div>
+            </div>
+            <table class="table table-bordered">
+                <thead class="table-danger">
+                    <tr><th>#</th><th>Symbol</th><th>Price</th><th>24h %</th><th>Volume</th></tr>
+                </thead>
+                <tbody id="losersBody"></tbody>
+            </table>
+        </div>
+
+        <!-- ROTATION -->
+        <div class="tab-pane fade" id="rotation">
+            <div class="text-center my-3">
+                <p>Rotation logic: when one coin pumps, find similar-use-case coins with lower or equal size and bullish signals.</p>
+                <button class="btn btn-primary" onclick="loadRotation()">Scan Rotation Opportunities</button>
+                <div id="rotationAlert" class="mt-3"></div>
+            </div>
+            <div id="rotationResults"></div>
+        </div>
+
+        <!-- ORDER BOOK (LIVE) -->
+        <div class="tab-pane fade" id="orderbook">
+            <h4 class="mb-3">Live Combined Order Book & Order Flow</h4>
+            <div class="mb-3">
+                <label class="form-label">Select Exchange:</label>
+                <select id="exchangeSelect" class="form-select" onchange="updateRealTime()">
+                    <option value="all">All</option>
+                    <option value="binance">Binance</option>
+                    <option value="bybit">Bybit</option>
+                    <option value="okx">OKX</option>
+                    <option value="gateio">Gate.io</option>
+                </select>
+            </div>
+            <div id="orderBookContent" class="border p-4 bg-light rounded">
+                <p class="text-muted">Select a symbol at the top and wait for real-time data to load...</p>
+            </div>
+        </div>
+
+        <!-- TRADES (LIVE) -->
+        <div class="tab-pane fade" id="trades">
+            <h4 class="mb-3">Recent Executed Trades (Buy/Sell Aggression)</h4>
+            <div id="tradesContent" class="border p-4 bg-light rounded">
+                <p class="text-muted">Loading live trades...</p>
+            </div>
+        </div>
+
+        <!-- PREDICTIONS -->
+        <div class="tab-pane fade" id="predictions">
+            <h4 class="mb-3">Short-Term Price Prediction (Order Flow + VWAP)</h4>
+            <div id="predictionsContent" class="border p-4 bg-light rounded">
+                <p class="text-muted">Loading prediction...</p>
+            </div>
+        </div>
+
+        <!-- SYSTEM -->
+        <div class="tab-pane fade" id="system">
+            <div class="text-center my-3">
+                <h4>Binance Symbol Sync</h4>
+                <p>Fetch all Binance spot symbols via ccxt and store only new ones in the database.</p>
+                <button class="btn btn-secondary" onclick="syncBinanceSymbols()">Sync Binance Symbols</button>
+                <div id="symbolSyncAlert" class="mt-3"></div>
+            </div>
+            <table class="table table-sm table-bordered w-50 mx-auto">
+                <tbody>
+                    <tr><th>Total markets</th><td id="syncTotal">-</td></tr>
+                    <tr><th>Already in DB</th><td id="syncExisting">-</td></tr>
+                    <tr><th>Newly added</th><td id="syncNew">-</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- SYMBOLS -->
+        <div class="tab-pane fade" id="symbols">
+            <div class="row g-3 mb-3">
+                <div class="col-md-6">
+                    <input id="symbolSearch" class="form-control" placeholder="Search e.g. USDT, USDC, BTC, ETH, BTC/USDT">
+                </div>
+                <div class="col-md-3">
+                    <button class="btn btn-primary w-100" onclick="searchSymbols()">Search</button>
+                </div>
+                <div class="col-md-3">
+                    <button class="btn btn-success w-100" onclick="exportSymbolsExcel()">Export Excel</button>
+                </div>
+            </div>
+            <div id="symbolsAlert"></div>
+            <table class="table table-bordered table-sm">
+                <thead class="table-dark">
+                    <tr>
+                        <th>#</th><th>Symbol</th><th>Base</th><th>Quote</th><th>Active</th><th>Added At</th>
+                    </tr>
+                </thead>
+                <tbody id="symbolsBody"></tbody>
+            </table>
+        </div>
+
+        <!-- new enhancement start -->
+         <!-- Train Bot Tab -->
+<div class="tab-pane fade" id="trainBot">
+    <h4 class="mb-3">Train Prediction Model</h4>
+    <div class="row g-3 mb-3">
+        <div class="col-md-4">
+            <label class="form-label">Symbol</label>
+            <input id="trainSymbol" class="form-control" value="BTC/USDT" placeholder="e.g. ETH/USDT">
+        </div>
+        <div class="col-md-4">
+            <label class="form-label">Timeframes (multi-select)</label>
+            <select id="trainTimeframes" class="form-select" multiple>
+                <option value="1m">1m</option>
+                <option value="5m">5m</option>
+                <option value="15m">15m</option>
+                <option value="1h">1h</option>
+                <option value="4h" selected>4h</option>
+                <option value="1d">1d</option>
+            </select>
+        </div>
+        <div class="col-md-2">
+            <label class="form-label">Look Back</label>
+            <input id="trainLookBack" type="number" class="form-control" value="50" min="10" max="200">
+        </div>
+        <div class="col-md-2 d-flex align-items-end">
+            <button class="btn btn-primary w-100" onclick="trainBot()">Train Model</button>
+        </div>
+    </div>
+    <div id="trainAlert"></div>
+    <p class="text-muted">Trains patterns and weights from DB data. Run once per symbol/timeframe or after new data.</p>
+</div>
+
+<!-- Predict Candle Tab -->
+<div class="tab-pane fade" id="predictCandle">
+    <h4 class="mb-3">Predict Next Candle</h4>
+    <div class="row g-3 mb-3">
+        <div class="col-md-3">
+            <label class="form-label">Symbol</label>
+            <input id="predictSymbol" class="form-control" value="BTC/USDT" placeholder="e.g. ETH/USDT">
+        </div>
+        <div class="col-md-3">
+            <label class="form-label">Timeframe</label>
+            <select id="predictTimeframe" class="form-select">
+                <option value="1m">1m</option>
+                <option value="5m">5m</option>
+                <option value="15m">15m</option>
+                <option value="1h">1h</option>
+                <option value="4h" selected>4h</option>
+                <option value="1d">1d</option>
+            </select>
+        </div>
+        <div class="col-md-2">
+            <label class="form-label">Look Back</label>
+            <input id="predictLookBack" type="number" class="form-control" value="50" min="10" max="200">
+        </div>
+        <div class="col-md-2">
+            <label class="form-label">Expander</label>
+            <input id="predictExpander" type="number" class="form-control" value="1.33" min="1.0" max="2.0" step="0.01">
+        </div>
+        <div class="col-md-2 d-flex align-items-end">
+            <button class="btn btn-success w-100" onclick="predictCandle()">Predict</button>
+        </div>
+    </div>
+    <div id="predictAlert"></div>
+    <div id="predictResults" class="border p-3 bg-light rounded mt-3">
+        <p class="text-muted">Run prediction to see results here (predicted % change, high/low bounds, confidence).</p>
+    </div>
+</div>
+         <!-- new enhancememt stop -->
+
+        
+    </div>
+</div>
+
+
+
+
+<script>
+// Change this if your Flask runs on different port/host
+const API = "http://127.0.0.1:8000";
+
+function showAlert(id, msg, type = "danger") {
+    const alertDiv = document.getElementById(id);
+    if (alertDiv) {
+        alertDiv.innerHTML = `
+            <div class="alert alert-${type} alert-dismissible fade show">
+                ${msg}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>`;
+    }
+}
+
+// === REAL-TIME FEATURES ===
+async function setLiveSymbol() {
+    const symbolInput = document.getElementById("liveSymbol").value.trim().toUpperCase();
+    if (!symbolInput) {
+        document.getElementById("liveSymbolStatus").innerHTML = '<span class="text-danger">Enter a symbol!</span>';
+        return;
+    }
+    try {
+        const res = await fetch(API + "/set_symbol", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ symbol: symbolInput })
+        });
+        const json = await res.json();
+        if (json.success) {
+            document.getElementById("liveSymbolStatus").innerHTML = `<span class="text-success">✓ Now tracking: ${symbolInput}</span>`;
+        } else {
+            document.getElementById("liveSymbolStatus").innerHTML = '<span class="text-danger">Failed to set symbol</span>';
+        }
+    } catch (e) {
+        document.getElementById("liveSymbolStatus").innerHTML = '<span class="text-danger">Connection error</span>';
+    }
+}
+
+async function updateRealTime() {
+    try {
+        const res = await fetch(API + "/realtime_data");
+        const data = await res.json();
+
+        const activeTab = document.querySelector('.tab-pane.active').id;
+
+        // Order Book Tab
+        if (activeTab === "orderbook") {
+            let selected = document.getElementById("exchangeSelect").value;
+            let bids_list, asks_list, total_buy, total_sell, imbalance, current_price, vwap, predicted;
+            let last_update = data.last_update;
+            let now = Date.now() / 1000;
+
+            if (selected === "all") {
+                let combined_bids = {};
+                let combined_asks = {};
+                for (let ex in data.order_book) {
+                    data.order_book[ex].bids.forEach(([p, q]) => {
+                        combined_bids[p] = (combined_bids[p] || 0) + q;
+                    });
+                    data.order_book[ex].asks.forEach(([p, q]) => {
+                        combined_asks[p] = (combined_asks[p] || 0) + q;
+                    });
+                }
+                bids_list = Object.entries(combined_bids).sort((a, b) => b[0] - a[0]).slice(0, 20);
+                asks_list = Object.entries(combined_asks).sort((a, b) => a[0] - b[0]).slice(0, 20);
+                total_buy = bids_list.reduce((sum, [p, q]) => sum + q, 0);
+                total_sell = asks_list.reduce((sum, [p, q]) => sum + q, 0);
+                let total = total_buy + total_sell + 1e-8;
+                imbalance = (total_buy - total_sell) / total;
+                let recent_trades = data.trades.filter(t => now - t[2] < 300);
+                if (recent_trades.length > 0) {
+                    let vwap_sum = recent_trades.reduce((sum, t) => sum + t[0] * t[1], 0);
+                    let vol_sum = recent_trades.reduce((sum, t) => sum + t[1], 0);
+                    vwap = vol_sum > 0 ? vwap_sum / vol_sum : null;
+                    current_price = recent_trades[recent_trades.length - 1][0];
+                } else {
+                    vwap = null;
+                    current_price = 0;
+                }
+                predicted = current_price * (1 + 0.005 * imbalance);
+            } else {
+                let book = data.order_book[selected] || { "bids": [], "asks": [] };
+                bids_list = book.bids;
+                asks_list = book.asks;
+                total_buy = bids_list.reduce((sum, [p, q]) => sum + q, 0);
+                total_sell = asks_list.reduce((sum, [p, q]) => sum + q, 0);
+                let total = total_buy + total_sell + 1e-8;
+                imbalance = (total_buy - total_sell) / total;
+                let recent_trades = data.trades.filter(t => now - t[2] < 300 && t[4] === selected);
+                if (recent_trades.length > 0) {
+                    let vwap_sum = recent_trades.reduce((sum, t) => sum + t[0] * t[1], 0);
+                    let vol_sum = recent_trades.reduce((sum, t) => sum + t[1], 0);
+                    vwap = vol_sum > 0 ? vwap_sum / vol_sum : null;
+                    current_price = recent_trades[recent_trades.length - 1][0];
+                } else {
+                    vwap = null;
+                    current_price = 0;
+                }
+                predicted = current_price * (1 + 0.005 * imbalance);
+            }
+
+            let imbalancePct = (imbalance * 100).toFixed(2);
+            let imbalanceClass = imbalance > 0 ? "imbalance-pos" : "imbalance-neg";
+            let lastUpdate = new Date(last_update * 1000).toLocaleTimeString();
+
+            let summaryHtml = `
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <strong>Symbol:</strong> ${data.current_symbol}<br>
+                        <strong>Last Update:</strong> ${lastUpdate}<br>
+                        <strong>Current Price:</strong> ${current_price ? current_price.toFixed(6) : 'N/A'} USDT
+                    </div>
+                    <div class="col-md-6 text-end">
+                        <strong>Buy Volume:</strong> ${total_buy.toFixed(2)}<br>
+                        <strong>Sell Volume:</strong> ${total_sell.toFixed(2)}<br>
+                        <strong class="${imbalanceClass}">Imbalance: ${imbalancePct}%</strong>
+                    </div>
+                </div>
+                <hr>
+                <div class="row mb-3">
+                    <div class="col"><strong>VWAP:</strong> ${vwap ? vwap.toFixed(6) : 'Calculating...'} USDT</div>
+                    <div class="col text-end"><strong>Predicted Price:</strong> <span class="fs-5 fw-bold">${predicted.toFixed(6)}</span> USDT</div>
+                </div>
+            `;
+
+            let bookHtml = `
+                <div class="row">
+                    <div class="col-md-6">
+                        <h5>Asks (Sells)</h5>
+                        <table class="table table-sm table-hover">
+                            <thead class="table-danger"><tr><th>Price</th><th>Quantity</th></tr></thead>
+                            <tbody>
+                                ${asks_list.map(([p, q]) => `<tr><td>${p.toFixed(6)}</td><td>${q.toFixed(2)}</td></tr>`).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="col-md-6">
+                        <h5>Bids (Buys)</h5>
+                        <table class="table table-sm table-hover">
+                            <thead class="table-success"><tr><th>Price</th><th>Quantity</th></tr></thead>
+                            <tbody>
+                                ${bids_list.map(([p, q]) => `<tr><td>${p.toFixed(6)}</td><td>${q.toFixed(2)}</td></tr>`).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+
+            document.getElementById("orderBookContent").innerHTML = summaryHtml + bookHtml;
+        }
+
+        // Trades Tab (always all)
+        if (activeTab === "trades") {
+            let tradesHtml = `<table class="table table-sm table-hover"><thead class="table-dark"><tr><th>Time</th><th>Price</th><th>Volume</th><th>Side</th><th>Exchange</th></tr></thead><tbody>`;
+            data.trades.slice(-100).reverse().forEach(t => {
+                const side = t[3] === 'b' ? 'BUY' : 'SELL';
+                const color = t[3] === 'b' ? 'text-success' : 'text-danger';
+                const timeStr = new Date(t[2] * 1000).toLocaleTimeString();
+                tradesHtml += `<tr><td>${timeStr}</td><td>${t[0].toFixed(6)}</td><td>${t[1].toFixed(2)}</td><td class="${color}"><strong>${side}</strong></td><td>${t[4]}</td></tr>`;
+            });
+            tradesHtml += `</tbody></table>`;
+            document.getElementById("tradesContent").innerHTML = tradesHtml;
+        }
+
+        // Predictions Tab (combined)
+        if (activeTab === "predictions") {
+            const lastUpdate = new Date(data.last_update * 1000).toLocaleTimeString();
+            document.getElementById("predictionsContent").innerHTML = `
+                <div class="alert alert-info">
+                    <h5>Short-Term Prediction (Next 5–15 min)</h5>
+                    <p class="mb-1 fs-4 fw-bold">Predicted Price: ${data.predicted_price.toFixed(6)} USDT</p>
+                    <p>Bias: Order Flow Imbalance (${(data.order_flow_imbalance * 100).toFixed(2)}%) + VWAP + Trade Aggression</p>
+                    <small>Updated: ${lastUpdate}</small>
+                </div>
+            `;
+        }
+
+    } catch (e) {
+        console.error("Real-time update failed:", e);
+    }
+}
+
+// Auto-refresh on live tabs
+setInterval(() => {
+    const active = document.querySelector('.tab-pane.active');
+    if (active && ['orderbook', 'trades', 'predictions'].includes(active.id)) {
+        updateRealTime();
+    }
+}, 2000);
+
+// Trigger initial load when switching to live tabs
+['orderbook', 'trades', 'predictions'].forEach(tabId => {
+    document.querySelector(`#mainTabs a[href="#${tabId}"]`).addEventListener('shown.bs.tab', updateRealTime);
+});
+
+// === ALL YOUR ORIGINAL FUNCTIONS (unchanged and working) ===
+async function fetchOHLCV() {
+    const symbol = document.getElementById("symbol").value.trim();
+    const timeframe = document.getElementById("timeframe").value;
+    const fromYear = document.getElementById("fromYear").value;
+    const toYear = document.getElementById("toYear").value;
+    showAlert("ohlcvAlert", "Fetching from Binance...", "info");
+    try {
+        const res = await fetch(API + "/fetch_data", {
+            method:"POST",
+            headers:{"Content-Type":"application/json"},
+            body: JSON.stringify({symbol, timeframe, from_year: fromYear, to_year: toYear})
+        });
+        const json = await res.json();
+        if (json.success) {
+            showAlert("ohlcvAlert", json.message, "success");
+            displayOHLCV(json.data);
+        } else {
+            showAlert("ohlcvAlert", json.error || "Failed");
+        }
+    } catch(e) {
+        showAlert("ohlcvAlert", "Error: "+e.message);
+    }
+}
+
+async function loadFromDB() {
+    const symbol = document.getElementById("symbol").value.trim().toUpperCase().replace(/[-_]/g, '/');
+    const timeframe = document.getElementById("timeframe").value;
+    const fromYear = document.getElementById("fromYear").value;
+    const toYear = document.getElementById("toYear").value;
+
+    let alertMsg = `Loading from DB: ${symbol} ${timeframe}`;
+    if (fromYear) alertMsg += ` from ${fromYear}`;
+    if (toYear) alertMsg += ` to ${toYear}`;
+    showAlert("ohlcvAlert", alertMsg, "info");
+
+    try {
+        const payload = { symbol, timeframe };
+        if (fromYear) payload.from_year = fromYear;
+        if (toYear) payload.to_year = toYear;
+
+        const res = await fetch(API + "/fetch_from_db", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+        });
+
+        const json = await res.json();
+        if (json.success) {
+            showAlert("ohlcvAlert", `Loaded ${json.data.length} rows from DB`, "success");
+            displayOHLCV(json.data);
+        } else {
+            showAlert("ohlcvAlert", json.error || "No data in database for selected range", "warning");
+        }
+    } catch (e) {
+        showAlert("ohlcvAlert", "Error: " + e.message, "danger");
+    }
+}
+function displayOHLCV(rows) {
+    const tbody = document.getElementById("ohlcvBody");
+    tbody.innerHTML = "";
+    // Sort rows descending by time (newest first)
+    rows.sort((a, b) => new Date(b["Time (UTC)"] || b.time_utc) - new Date(a["Time (UTC)"] || a.time_utc));
+    rows.forEach((r, i) => {
+        const previousVol = (i < rows.length - 1) ? Number(rows[i + 1].volume || rows[i + 1].Volume) : null;
+        const currentVol = Number(r.volume || r.Volume);
+        const diff = previousVol !== null ? currentVol - previousVol : null;
+        let volChangeHtml = 'N/A';
+        if (diff !== null) {
+            const className = diff > 0 ? 'positive' : 'negative';
+            const sign = diff > 0 ? '+' : '';
+            volChangeHtml = `<span class="${className}">${sign}${diff.toLocaleString(undefined, {maximumFractionDigits: 2})}</span>`;
+        }
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+            <td>${i+1}</td>
+            <td>${r.time_utc || r["Time (UTC)"]}</td>
+            <td>${Number(r.open || r.Open).toFixed(4)}</td>
+            <td>${Number(r.high || r.High).toFixed(4)}</td>
+            <td>${Number(r.low || r.Low).toFixed(4)}</td>
+            <td>${Number(r.close || r.Close).toFixed(4)}</td>
+            <td>${currentVol.toLocaleString()}</td>
+            <td>${volChangeHtml}</td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+async function analyzeSymbol() {
+    const symbol = document.getElementById("signalSymbol").value.trim();
+    const timeframe = document.getElementById("signalTimeframe").value;
+    if (!symbol) {
+        showAlert("signalAlert", "Please enter a symbol");
+        return;
+    }
+    showAlert("signalAlert", `Analyzing ${symbol} ${timeframe}...`, "info");
+    try {
+        const res = await fetch(API + "/analyze_symbol", {
+            method:"POST",
+            headers:{"Content-Type":"application/json"},
+            body: JSON.stringify({symbol, timeframe})
+        });
+        const json = await res.json();
+        if (!json.success) {
+            showAlert("signalAlert", json.error || "Failed");
+            return;
+        }
+        let cls = "signal-bullish";
+        if (json.signal.startsWith("BEARISH")) cls = "signal-bearish";
+        if (json.signal.startsWith("WATCH_")) cls = "signal-watch";
+        const d = json;
+        const ind = d.indicators;
+        const c = d.last_candle;
+        const html = `
+            <p><strong>Symbol:</strong> ${d.symbol} &nbsp; <strong>Timeframe:</strong> ${d.timeframe}</p>
+            <p><strong>Last Candle:</strong> ${c.time_utc} |
+               O: ${c.open.toFixed(4)} H: ${c.high.toFixed(4)}
+               L: ${c.low.toFixed(4)} C: ${c.close.toFixed(4)}
+               Vol: ${c.volume.toLocaleString()}</p>
+            <p><strong>RSI(14):</strong> ${ind.rsi ? ind.rsi.toFixed(2) : "n/a"} &nbsp;
+               <strong>MACD:</strong> ${ind.macd ? ind.macd.toFixed(4) : "n/a"} &nbsp;
+               <strong>Signal:</strong> ${ind.macd_signal ? ind.macd_signal.toFixed(4) : "n/a"}</p>
+            <p><strong>EMA20:</strong> ${ind.ema20 ? ind.ema20.toFixed(4) : "n/a"} &nbsp;
+               <strong>EMA50:</strong> ${ind.ema50 ? ind.ema50.toFixed(4) : "n/a"} &nbsp;
+               <strong>EMA100:</strong> ${ind.ema100 ? ind.ema100.toFixed(4) : "n/a"} &nbsp;
+               <strong>EMA200:</strong> ${ind.ema200 ? ind.ema200.toFixed(4) : "n/a"}</p>
+            <p class="${cls}"><strong>Signal:</strong> ${d.signal} (score ${d.score})</p>
+            <ul>${d.reasons.map(r => `<li>${r}</li>`).join("")}</ul>
+        `;
+        document.getElementById("signalDetails").innerHTML = html;
+        showAlert("signalAlert", "Analysis completed", "success");
+    } catch(e) {
+        showAlert("signalAlert", "Error: "+e.message);
+    }
+}
+
+async function refreshGainersLosers() {
+    showAlert("gainersAlert", "Fetching from Binance...", "info");
+    showAlert("losersAlert", "Fetching from Binance...", "info");
+    try {
+        const res = await fetch(API + "/fetch_gainers_losers");
+        const json = await res.json();
+        if (json.success) {
+            showAlert("gainersAlert", json.message, "success");
+            showAlert("losersAlert", json.message, "success");
+            loadGainers();
+            loadLosers();
+        } else {
+            showAlert("gainersAlert", json.error || "Failed");
+            showAlert("losersAlert", json.error || "Failed");
+        }
+    } catch(e) {
+        showAlert("gainersAlert", "Error: "+e.message);
+        showAlert("losersAlert", "Error: "+e.message);
+    }
+}
+
+async function loadGainers() {
+    const res = await fetch(API + "/get_gainers");
+    const json = await res.json();
+    const tbody = document.getElementById("gainersBody");
+    tbody.innerHTML = "";
+    json.data.forEach((d, i) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+            <td>${i+1}</td>
+            <td><strong>${d.symbol}</strong></td>
+            <td>$${Number(d.price).toFixed(6)}</td>
+            <td class="positive">+${d.price_change_percent.toFixed(2)}%</td>
+            <td>$${Number(d.volume_24h).toLocaleString()}</td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+async function loadLosers() {
+    const res = await fetch(API + "/get_losers");
+    const json = await res.json();
+    const tbody = document.getElementById("losersBody");
+    tbody.innerHTML = "";
+    json.data.forEach((d, i) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+            <td>${i+1}</td>
+            <td><strong>${d.symbol}</strong></td>
+            <td>$${Number(d.price).toFixed(6)}</td>
+            <td class="negative">${d.price_change_percent.toFixed(2)}%</td>
+            <td>$${Number(d.volume_24h).toLocaleString()}</td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+async function loadGainerSignals() {
+    showAlert("gainerSignalsAlert", "Scanning gainers with full indicators...", "info");
+    const tbody = document.getElementById("gainerSignalsBody");
+    tbody.innerHTML = "";
+    try {
+        const res = await fetch(API + "/gainers_signals");
+        const json = await res.json();
+        if (!json.success) {
+            showAlert("gainerSignalsAlert", json.error || "Failed");
+            return;
+        }
+        json.data.forEach((d, i) => {
+            let cls = "signal-bullish";
+            if (d.signal.startsWith("STRONG_BEARISH") || d.signal.startsWith("BEARISH")) cls = "signal-bearish";
+            if (d.signal.startsWith("WATCH_")) cls = "signal-watch";
+            const tr = document.createElement("tr");
+            tr.innerHTML = `
+                <td>${i+1}</td>
+                <td><strong>${d.symbol}</strong></td>
+                <td class="${d.price_change_percent >= 0 ? "positive" : "negative"}">
+                    ${d.price_change_percent.toFixed(2)}%
+                </td>
+                <td>$${Number(d.volume_24h).toLocaleString()}</td>
+                <td>${d.close.toFixed(6)}</td>
+                <td>${d.rsi ? d.rsi.toFixed(2) : "n/a"}</td>
+                <td class="${cls}">${d.signal}</td>
+                <td>${d.score}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+        showAlert("gainerSignalsAlert", "Gainer signals ready", "success");
+    } catch(e) {
+        showAlert("gainerSignalsAlert", "Error: "+e.message);
+    }
+}
+
+async function loadRotation() {
+    showAlert("rotationAlert", "Scanning rotation opportunities...", "info");
+    const container = document.getElementById("rotationResults");
+    container.innerHTML = "";
+    try {
+        const res = await fetch(API + "/rotation_signals");
+        const json = await res.json();
+        if (!json.success) {
+            showAlert("rotationAlert", json.error || "Failed");
+            return;
+        }
+        const data = json.data;
+        if (!data.length) {
+            showAlert("rotationAlert", "No rotation candidates found.", "warning");
+            return;
+        }
+        data.forEach((block, idx) => {
+            const div = document.createElement("div");
+            div.className = "card mb-3";
+            let html = `
+                <div class="card-header">
+                    Pumped: <strong>${block.pumped_symbol}</strong>
+                    (Cat: ${block.pumped_category}) – ${block.pumped_change_pct.toFixed(2)}%,
+                    Vol: $${Number(block.pumped_volume).toLocaleString()}
+                </div>
+                <div class="card-body">
+                    <table class="table table-sm table-bordered">
+                        <thead class="table-info">
+                            <tr>
+                                <th>#</th><th>Symbol</th><th>Score</th><th>Label</th><th>RSI</th><th>24h %</th><th>Vol</th><th>Close</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+            block.rotation_candidates.forEach((c, i) => {
+                let cls = "signal-bullish";
+                if (c.label.startsWith("STRONG_BEARISH") || c.label.startsWith("BEARISH")) cls = "signal-bearish";
+                if (c.label.startsWith("WATCH_")) cls = "signal-watch";
+                html += `
+                    <tr>
+                        <td>${i+1}</td>
+                        <td><strong>${c.symbol}</strong></td>
+                        <td>${c.score}</td>
+                        <td class="${cls}">${c.label}</td>
+                        <td>${c.rsi ? c.rsi.toFixed(2) : "n/a"}</td>
+                        <td>${c.today_change_pct.toFixed(2)}%</td>
+                        <td>$${Number(c.today_volume).toLocaleString()}</td>
+                        <td>${c.close.toFixed(6)}</td>
+                    </tr>
+                `;
+            });
+            html += `</tbody></table></div>`;
+            div.innerHTML = html;
+            container.appendChild(div);
+        });
+        showAlert("rotationAlert", "Rotation candidates ready.", "success");
+    } catch(e) {
+        showAlert("rotationAlert", "Error: "+e.message);
+    }
+}
+
+// new fumction start
+async function trainBot() {
+    const symbol = document.getElementById("trainSymbol").value.trim().toUpperCase().replace(/[-_]/g, '/');
+    const timeframes = Array.from(document.getElementById("trainTimeframes").selectedOptions).map(opt => opt.value);
+    const lookBack = parseInt(document.getElementById("trainLookBack").value);
+    
+    if (!symbol || timeframes.length === 0) {
+        showAlert("trainAlert", "Select symbol and at least one timeframe", "danger");
+        return;
+    }
+    
+    showAlert("trainAlert", "Training model...", "info");
+    try {
+        const res = await fetch(API + "/train_bot", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ symbol, timeframes, look_back: lookBack })
+        });
+        const json = await res.json();
+        if (json.success) {
+            showAlert("trainAlert", json.message, "success");
+        } else {
+            showAlert("trainAlert", json.error, "danger");
+        }
+    } catch (e) {
+        showAlert("trainAlert", "Error: " + e.message, "danger");
+    }
+}
+
+async function predictCandle() {
+    const symbol = document.getElementById("predictSymbol").value.trim().toUpperCase().replace(/[-_]/g, '/');
+    const timeframe = document.getElementById("predictTimeframe").value;
+    const lookBack = parseInt(document.getElementById("predictLookBack").value);
+    const expander = parseFloat(document.getElementById("predictExpander").value);
+    
+    if (!symbol) {
+        showAlert("predictAlert", "Select symbol", "danger");
+        return;
+    }
+    
+    showAlert("predictAlert", "Predicting next candle...", "info");
+    try {
+        const res = await fetch(API + "/predict_candle", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ symbol, timeframe, look_back: lookBack, expander })
+        });
+        const json = await res.json();
+        if (json.success) {
+            showAlert("predictAlert", "Prediction ready", "success");
+            displayPrediction(json.prediction);
+        } else {
+            showAlert("predictAlert", json.error, "danger");
+        }
+    } catch (e) {
+        showAlert("predictAlert", "Error: " + e.message, "danger");
+    }
+}
+
+function displayPrediction(pred) {
+    const container = document.getElementById("predictResults");
+    container.innerHTML = `
+        <h5>Predicted Next Candle (Confidence: ${pred.confidence.toFixed(2)}%)</h5>
+        <p><strong>% Close Change:</strong> ${pred.pct_close.toFixed(2)}% (Bounds: ${pred.close_low.toFixed(2)}% to ${pred.close_high.toFixed(2)}%)</p>
+        <p><strong>% High Change:</strong> ${pred.pct_high.toFixed(2)}% (Bounds: ${pred.high_low.toFixed(2)}% to ${pred.high_high.toFixed(2)}%)</p>
+        <p><strong>% Low Change:</strong> ${pred.pct_low.toFixed(2)}% (Bounds: ${pred.low_low.toFixed(2)}% to ${pred.low_high.toFixed(2)}%)</p>
+        <small>Based on ${pred.matches} historical matches.</small>
+    `;
+}
+// new function stop
+
+async function syncBinanceSymbols() {
+    showAlert("symbolSyncAlert", "Syncing Binance symbols...", "info");
+    try {
+        const res = await fetch(API + "/sync_binance_symbols", { method: "POST" });
+        const json = await res.json();
+        if (!json.success) {
+            showAlert("symbolSyncAlert", json.error || "Sync failed");
+            return;
+        }
+        document.getElementById("syncTotal").innerText = json.total_markets;
+        document.getElementById("syncExisting").innerText = json.already_existing;
+        document.getElementById("syncNew").innerText = json.newly_added;
+        showAlert("symbolSyncAlert", `Sync complete. ${json.newly_added} new symbols added.`, "success");
+    } catch (e) {
+        showAlert("symbolSyncAlert", "Error: " + e.message);
+    }
+}
+
+async function searchSymbols() {
+    const q = document.getElementById("symbolSearch").value.trim();
+    showAlert("symbolsAlert", "Searching symbols...", "info");
+    try {
+        const res = await fetch(`${API}/search_symbols?q=${encodeURIComponent(q)}`);
+        const json = await res.json();
+        if (!json.success) {
+            showAlert("symbolsAlert", "Search failed");
+            return;
+        }
+        const tbody = document.getElementById("symbolsBody");
+        tbody.innerHTML = "";
+        json.data.forEach((r, i) => {
+            const tr = document.createElement("tr");
+            tr.innerHTML = `
+                <td>${i + 1}</td>
+                <td><strong>${r.symbol}</strong></td>
+                <td>${r.base || ""}</td>
+                <td>${r.quote || ""}</td>
+                <td>${r.active ? "Yes" : "No"}</td>
+                <td>${r.created_at || ""}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+        showAlert("symbolsAlert", `Loaded ${json.data.length} symbols`, "success");
+    } catch (e) {
+        showAlert("symbolsAlert", "Error: " + e.message);
+    }
+}
+
+function exportSymbolsExcel() {
+    const q = document.getElementById("symbolSearch").value.trim();
+    const url = `${API}/export_symbols_excel?q=${encodeURIComponent(q)}`;
+    window.open(url, "_blank");
+}
+
+// Auto-load gainers/losers on tab open
+document.querySelectorAll('#mainTabs a').forEach(tab => {
+    tab.addEventListener('shown.bs.tab', e => {
+        const href = e.target.getAttribute('href');
+        if (href === '#gainers') loadGainers();
+        if (href === '#losers') loadLosers();
+    });
+});
+
+document.addEventListener("DOMContentLoaded", () => {
+    const currentYear = new Date().getFullYear();
+    document.getElementById("fromYear").value = currentYear - 1;
+    document.getElementById("toYear").value = currentYear;
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,3139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>SUPER BOT v4 – Signals, Rotation & Real-Time Order Flow</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- Bootstrap CSS + JS Bundle (includes Popper) -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- TradingView Widget -->
+    <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
+    <!-- Chart.js for Real-Time Analysis -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .positive { color: green; font-weight: bold; }
+        .negative { color: red; font-weight: bold; }
+        .signal-bullish { color: #0f5132; font-weight: bold; background-color: #d1e7dd; }
+        .signal-bearish { color: #842029; font-weight: bold; background-color: #f8d7da; }
+        .signal-watch { color: #664d03; font-weight: bold; background-color: #fff3cd; }
+        .imbalance-pos { color: green; font-weight: bold; }
+        .imbalance-neg { color: red; font-weight: bold; }
+        table { font-size: 0.9em; }
+        .card { margin-bottom: 1rem; }
+        .exchange-controls { 
+            background-color: #f8f9fa; 
+            padding: 15px; 
+            border-radius: 5px; 
+            margin-bottom: 20px; 
+            border: 1px solid #dee2e6;
+        }
+        .form-check-inline { margin-right: 15px; }
+        
+        /* Enhanced Prediction Styles */
+        .signal-strong-bullish { 
+            color: #0d6efd; 
+            background-color: #d1e7ff; 
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        .signal-bullish { 
+            color: #198754; 
+            background-color: #d1e7dd; 
+            padding: 5px 10px;
+            border-radius: 4px;
+        }
+        .signal-bearish { 
+            color: #dc3545; 
+            background-color: #f8d7da; 
+            padding: 5px 10px;
+            border-radius: 4px;
+        }
+        .signal-neutral { 
+            color: #6c757d; 
+            background-color: #f8f9fa; 
+            padding: 5px 10px;
+            border-radius: 4px;
+        }
+        .prediction-high { color: #198754; font-weight: bold; }
+        .prediction-medium { color: #fd7e14; font-weight: bold; }
+        .prediction-low { color: #dc3545; font-weight: bold; }
+        .chart-container { height: 400px; }
+        .progress { height: 20px; }
+        
+        /* Real-Time Analysis Styles - UPDATED */
+        .rt-card {
+            border-left: 4px solid #0d6efd;
+            transition: all 0.3s ease;
+            min-height: 120px;
+        }
+        .rt-card:hover {
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            transform: translateY(-2px);
+        }
+        .rt-metric {
+            font-size: 1.5rem;
+            font-weight: bold;
+            margin-bottom: 0;
+        }
+        .rt-label {
+            color: #6c757d;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .rt-change-positive {
+            color: #198754;
+            font-size: 1rem;
+            font-weight: bold;
+        }
+        .rt-change-negative {
+            color: #dc3545;
+            font-size: 1rem;
+            font-weight: bold;
+        }
+        .rt-timestamp {
+            font-size: 0.75rem;
+            color: #6c757d;
+            font-style: italic;
+        }
+        .market-depth-chart { height: 220px; } /* REDUCED */
+        .trade-flow-chart { height: 180px; } /* REDUCED FROM 250px */
+        .order-imbalance-chart { height: 200px; }
+        
+        /* Heatmap Styles */
+        .heatmap-cell {
+            width: 100%;
+            height: 25px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 3px;
+            font-weight: bold;
+            font-size: 0.75rem;
+            transition: transform 0.2s;
+        }
+        .heatmap-cell:hover {
+            transform: scale(1.05);
+            z-index: 10;
+        }
+        
+        /* Animated indicators */
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.7; }
+            100% { opacity: 1; }
+        }
+        .pulse {
+            animation: pulse 2s infinite;
+        }
+        
+        /* Trading Signals */
+        .signal-card {
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .signal-card.buy {
+            border-top: 4px solid #198754;
+            background: linear-gradient(135deg, #d1e7dd 0%, #e8f5e9 100%);
+        }
+        .signal-card.sell {
+            border-top: 4px solid #dc3545;
+            background: linear-gradient(135deg, #f8d7da 0%, #ffebee 100%);
+        }
+        .signal-card.neutral {
+            border-top: 4px solid #6c757d;
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+        }
+        
+        /* Order Book Levels */
+        .order-level {
+            padding: 5px 10px;
+            margin: 2px 0;
+            border-radius: 3px;
+            font-family: monospace;
+            font-size: 0.85rem;
+        }
+        .order-level.bid {
+            background: linear-gradient(to left, rgba(25, 135, 84, 0.1), rgba(25, 135, 84, 0.05));
+            border-left: 3px solid #198754;
+        }
+        .order-level.ask {
+            background: linear-gradient(to right, rgba(220, 53, 69, 0.1), rgba(220, 53, 69, 0.05));
+            border-right: 3px solid #dc3545;
+        }
+        
+        /* Tooltip Styles */
+        .custom-tooltip {
+            position: relative;
+            display: inline-block;
+        }
+        .custom-tooltip .tooltip-text {
+            visibility: hidden;
+            width: 200px;
+            background-color: #333;
+            color: #fff;
+            text-align: center;
+            border-radius: 6px;
+            padding: 5px;
+            position: absolute;
+            z-index: 1000;
+            bottom: 125%;
+            left: 50%;
+            margin-left: -100px;
+            opacity: 0;
+            transition: opacity 0.3s;
+            font-size: 0.8rem;
+        }
+        .custom-tooltip:hover .tooltip-text {
+            visibility: visible;
+            opacity: 1;
+        }
+        
+        /* Compact table styles for Real-Time Analysis */
+        .compact-table {
+            font-size: 0.8rem;
+        }
+        .compact-table th {
+            padding: 4px 8px;
+        }
+        .compact-table td {
+            padding: 4px 8px;
+        }
+        
+        /* Better responsive layout */
+        @media (max-width: 992px) {
+            .rt-metric {
+                font-size: 1.3rem;
+            }
+            .market-depth-chart { height: 200px; }
+            .trade-flow-chart { height: 160px; }
+        }
+        
+        @media (max-width: 768px) {
+            .rt-metric {
+                font-size: 1.2rem;
+            }
+            .market-depth-chart { height: 180px; }
+            .trade-flow-chart { height: 150px; }
+            .rt-card {
+                min-height: 100px;
+            }
+        }
+    </style>
+</head>
+<body>
+<div class="container mt-4">
+    <h1 class="text-center text-primary mb-4">SUPER BOT v4 – Signals, Rotation & Real-Time Order Flow</h1>
+
+    <!-- Live Symbol Selector for Real-Time Tabs -->
+    <div class="row mb-4">
+        <div class="col-md-5">
+            <label class="form-label fw-bold">Live Symbol for Order Book & Trades</label>
+            <input id="liveSymbol" class="form-control" value="BTC/USDT" placeholder="e.g. SOL/USDT, PHB/USDT">
+        </div>
+        <div class="col-md-3 d-flex align-items-end">
+            <button class="btn btn-primary w-100" onclick="setLiveSymbol()">Set Live Symbol</button>
+        </div>
+        <div class="col-md-4 d-flex align-items-end">
+            <div id="liveSymbolStatus" class="ms-3 text-muted fst-italic"></div>
+        </div>
+    </div>
+
+    <ul class="nav nav-tabs mb-4" id="mainTabs">
+        <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#ohlcv">OHLCV</a></li>
+        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#signals">Signals</a></li>
+        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#gainers">Gainers</a></li>
+        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#losers">Losers</a></li>
+        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#rotation">Rotation</a></li>
+        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#orderbook">Order Book (Live)</a></li>
+        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#trades">Trades (Live)</a></li>
+        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#realtimeAnalysis">Real-Time Analysis</a></li>
+        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#predictions">Predictions</a></li>
+        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#system">System</a></li>
+        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#symbols">Symbols</a></li>
+        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#trainBot">Train Bot</a></li>
+        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#predictCandle">Predict Candle</a></li>
+    </ul>
+
+    <div class="tab-content">
+        <!-- OHLCV -->
+        <div class="tab-pane fade show active" id="ohlcv">
+            <div class="row g-3 mb-3">
+                <div class="col-md-4">
+                    <input id="symbol" class="form-control" value="BTC/USDT" placeholder="e.g. PHB/USDT">
+                </div>
+                <div class="col-md-3">
+                    <select id="timeframe" class="form-control">
+                        <option value="1m">1m</option>
+                        <option value="5m">5m</option>
+                        <option value="15m">15m</option>
+                        <option value="1h">1h</option>
+                        <option value="4h" selected>4h</option>
+                        <option value="1d">1d</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small">From Year</label>
+                    <input type="number" id="fromYear" class="form-control" min="2000" max="2100">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small">To Year</label>
+                    <input type="number" id="toYear" class="form-control" min="2000" max="2100">
+                </div>
+                <div class="col-md-1 d-flex align-items-end">
+                    <button class="btn btn-success w-100" onclick="fetchOHLCV()">Fetch Live</button>
+                </div>
+            </div>
+            <button class="btn btn-warning mb-3" onclick="loadFromDB()">Load from DB</button>
+            <div id="ohlcvAlert"></div>
+            <table class="table table-sm table-bordered table-striped">
+                <thead class="table-dark">
+                    <tr><th>#</th><th>Time (UTC)</th><th>Open</th><th>High</th><th>Low</th><th>Close</th><th>Volume</th><th>Vol Change</th></tr>
+                </thead>
+                <tbody id="ohlcvBody"></tbody>
+            </table>
+        </div>
+
+        <!-- SIGNALS -->
+        <div class="tab-pane fade" id="signals">
+            <div class="row g-3 mb-4">
+                <div class="col-md-4">
+                    <input id="signalSymbol" class="form-control" value="BTC/USDT">
+                </div>
+                <div class="col-md-3">
+                    <select id="signalTimeframe" class="form-control">
+                        <option value="15m">15m</option>
+                        <option value="1h">1h</option>
+                        <option value="4h" selected>4h</option>
+                        <option value="1d">1d</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <button class="btn btn-primary w-100" onclick="analyzeSymbol()">Analyze</button>
+                </div>
+            </div>
+            <div id="signalAlert"></div>
+            <div class="card mb-4">
+                <div class="card-header">Latest Candle & Indicators</div>
+                <div class="card-body" id="signalDetails">
+                    <p class="text-muted mb-0">Run analysis to see RSI / MACD / EMAs and signal here.</p>
+                </div>
+            </div>
+            <h4>Signals for Today's Top Gainers</h4>
+            <button class="btn btn-success mb-3" onclick="loadGainerSignals()">Scan Gainers</button>
+            <div id="gainerSignalsAlert"></div>
+            <table class="table table-bordered table-sm">
+                <thead class="table-success">
+                    <tr>
+                        <th>#</th><th>Symbol</th><th>24h %</th><th>Volume</th><th>Close</th><th>RSI</th><th>Signal</th><th>Score</th>
+                    </tr>
+                </thead>
+                <tbody id="gainerSignalsBody"></tbody>
+            </table>
+        </div>
+
+        <!-- GAINERS -->
+        <div class="tab-pane fade" id="gainers">
+            <div class="text-center my-3">
+                <button class="btn btn-success" onclick="refreshGainersLosers()">Refresh Gainers & Losers</button>
+                <div id="gainersAlert" class="mt-3"></div>
+            </div>
+            <table class="table table-bordered">
+                <thead class="table-success">
+                    <tr><th>#</th><th>Symbol</th><th>Price</th><th>24h %</th><th>Volume</th></tr>
+                </thead>
+                <tbody id="gainersBody"></tbody>
+            </table>
+        </div>
+
+        <!-- LOSERS -->
+        <div class="tab-pane fade" id="losers">
+            <div class="text-center my-3">
+                <button class="btn btn-danger" onclick="refreshGainersLosers()">Refresh Gainers & Losers</button>
+                <div id="losersAlert" class="mt-3"></div>
+            </div>
+            <table class="table table-bordered">
+                <thead class="table-danger">
+                    <tr><th>#</th><th>Symbol</th><th>Price</th><th>24h %</th><th>Volume</th></tr>
+                </thead>
+                <tbody id="losersBody"></tbody>
+            </table>
+        </div>
+
+        <!-- ROTATION -->
+        <div class="tab-pane fade" id="rotation">
+            <div class="text-center my-3">
+                <p>Rotation logic: when one coin pumps, find similar-use-case coins with lower or equal size and bullish signals.</p>
+                <button class="btn btn-primary" onclick="loadRotation()">Scan Rotation Opportunities</button>
+                <div id="rotationAlert" class="mt-3"></div>
+            </div>
+            <div id="rotationResults"></div>
+        </div>
+
+        <!-- ORDER BOOK (LIVE) - MODIFIED WITH CHECKBOXES FOR 10 EXCHANGES -->
+        <div class="tab-pane fade" id="orderbook">
+            <h4 class="mb-3">Live Combined Order Book & Order Flow</h4>
+            
+            <div class="exchange-controls">
+                <div class="row">
+                    <div class="col-md-8">
+                        <label class="form-label fw-bold">Select Exchanges:</label>
+                        <div class="mt-2">
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="checkbox" id="exchangeAll" checked onchange="toggleAllExchanges()">
+                                <label class="form-check-label" for="exchangeAll">All</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input exchange-checkbox" type="checkbox" id="exchangeBinance" value="binance" checked onchange="updateExchangeSelection()">
+                                <label class="form-check-label" for="exchangeBinance">Binance</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input exchange-checkbox" type="checkbox" id="exchangeBybit" value="bybit" checked onchange="updateExchangeSelection()">
+                                <label class="form-check-label" for="exchangeBybit">Bybit</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input exchange-checkbox" type="checkbox" id="exchangeOKX" value="okx" checked onchange="updateExchangeSelection()">
+                                <label class="form-check-label" for="exchangeOKX">OKX</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input exchange-checkbox" type="checkbox" id="exchangeGateio" value="gateio" checked onchange="updateExchangeSelection()">
+                                <label class="form-check-label" for="exchangeGateio">Gate.io</label>
+                            </div>
+                            <!-- NEW EXCHANGES ADDED -->
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input exchange-checkbox" type="checkbox" id="exchangeKucoin" value="kucoin" checked onchange="updateExchangeSelection()">
+                                <label class="form-check-label" for="exchangeKucoin">KuCoin</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input exchange-checkbox" type="checkbox" id="exchangeHuobi" value="huobi" checked onchange="updateExchangeSelection()">
+                                <label class="form-check-label" for="exchangeHuobi">Huobi</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input exchange-checkbox" type="checkbox" id="exchangeKraken" value="kraken" checked onchange="updateExchangeSelection()">
+                                <label class="form-check-label" for="exchangeKraken">Kraken</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input exchange-checkbox" type="checkbox" id="exchangeBitget" value="bitget" checked onchange="updateExchangeSelection()">
+                                <label class="form-check-label" for="exchangeBitget">Bitget</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input exchange-checkbox" type="checkbox" id="exchangeMexc" value="mexc" checked onchange="updateExchangeSelection()">
+                                <label class="form-check-label" for="exchangeMexc">MEXC</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input exchange-checkbox" type="checkbox" id="exchangeCoinbase" value="coinbase" checked onchange="updateExchangeSelection()">
+                                <label class="form-check-label" for="exchangeCoinbase">Coinbase</label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold">Depth Levels:</label>
+                        <select id="depthLevels" class="form-select" onchange="updateRealTime()">
+                            <option value="10">10 levels</option>
+                            <option value="15" selected>15 levels</option>
+                            <option value="20">20 levels</option>
+                            <option value="25">25 levels</option>
+                            <option value="30">30 levels</option>
+                            <option value="40">40 levels</option>
+                            <option value="50">50 levels</option>
+                            <option value="60">60 levels</option>
+                            <option value="100">100 levels</option>
+                            <option value="200">200 levels</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="row mt-3">
+                    <div class="col-md-12">
+                        <div class="alert alert-info py-2 mb-0" id="exchangeStatus">
+                            <small>Selected: All 10 exchanges</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="orderBookContent" class="border p-4 bg-light rounded">
+                <p class="text-muted">Select a symbol at the top and wait for real-time data to load...</p>
+            </div>
+        </div>
+
+        <!-- TRADES (LIVE) -->
+        <div class="tab-pane fade" id="trades">
+            <h4 class="mb-3">Recent Executed Trades (Buy/Sell Aggression)</h4>
+            <div id="tradesContent" class="border p-4 bg-light rounded">
+                <p class="text-muted">Loading live trades...</p>
+            </div>
+        </div>
+
+        <!-- REAL-TIME ANALYSIS - UPDATED LAYOUT WITH 10 EXCHANGES -->
+        <div class="tab-pane fade" id="realtimeAnalysis">
+            <h4 class="mb-3">Real-Time Market Analysis & Predictions</h4>
+            
+            <!-- Controls -->
+            <div class="exchange-controls">
+                <div class="row">
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Select Exchanges:</label>
+                        <div class="mt-2">
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="checkbox" id="rtExchangeAll" checked onchange="toggleAllExchangesRT()">
+                                <label class="form-check-label" for="rtExchangeAll">All</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input rt-exchange-checkbox" type="checkbox" id="rtExchangeBinance" value="binance" checked onchange="updateExchangeSelectionRT()">
+                                <label class="form-check-label" for="rtExchangeBinance">Binance</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input rt-exchange-checkbox" type="checkbox" id="rtExchangeBybit" value="bybit" checked onchange="updateExchangeSelectionRT()">
+                                <label class="form-check-label" for="rtExchangeBybit">Bybit</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input rt-exchange-checkbox" type="checkbox" id="rtExchangeOKX" value="okx" checked onchange="updateExchangeSelectionRT()">
+                                <label class="form-check-label" for="rtExchangeOKX">OKX</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input rt-exchange-checkbox" type="checkbox" id="rtExchangeGateio" value="gateio" checked onchange="updateExchangeSelectionRT()">
+                                <label class="form-check-label" for="rtExchangeGateio">Gate.io</label>
+                            </div>
+                            <!-- NEW EXCHANGES ADDED FOR REAL-TIME ANALYSIS -->
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input rt-exchange-checkbox" type="checkbox" id="rtExchangeKucoin" value="kucoin" checked onchange="updateExchangeSelectionRT()">
+                                <label class="form-check-label" for="rtExchangeKucoin">KuCoin</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input rt-exchange-checkbox" type="checkbox" id="rtExchangeHuobi" value="huobi" checked onchange="updateExchangeSelectionRT()">
+                                <label class="form-check-label" for="rtExchangeHuobi">Huobi</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input rt-exchange-checkbox" type="checkbox" id="rtExchangeKraken" value="kraken" checked onchange="updateExchangeSelectionRT()">
+                                <label class="form-check-label" for="rtExchangeKraken">Kraken</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input rt-exchange-checkbox" type="checkbox" id="rtExchangeBitget" value="bitget" checked onchange="updateExchangeSelectionRT()">
+                                <label class="form-check-label" for="rtExchangeBitget">Bitget</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input rt-exchange-checkbox" type="checkbox" id="rtExchangeMexc" value="mexc" checked onchange="updateExchangeSelectionRT()">
+                                <label class="form-check-label" for="rtExchangeMexc">MEXC</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input rt-exchange-checkbox" type="checkbox" id="rtExchangeCoinbase" value="coinbase" checked onchange="updateExchangeSelectionRT()">
+                                <label class="form-check-label" for="rtExchangeCoinbase">Coinbase</label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Analysis Parameters:</label>
+                        <div class="row mt-2">
+                            <div class="col-6">
+                                <label class="small">Time Window (seconds):</label>
+                                <input type="number" id="rtTimeWindow" class="form-control form-control-sm" value="60" min="10" max="300">
+                            </div>
+                            <div class="col-6">
+                                <label class="small">Prediction Horizon:</label>
+                                <select id="rtPredictionHorizon" class="form-select form-select-sm">
+                                    <option value="1">1 minute</option>
+                                    <option value="5" selected>5 minutes</option>
+                                    <option value="15">15 minutes</option>
+                                    <option value="30">30 minutes</option>
+                                    <option value="60">1H</option>
+                                    <option value="120">2H</option>
+                                    <option value="180">3H</option>
+                                    <option value="180">3H</option>
+                                    <option value="240">4H</option>
+                                    <option value="360">6H</option>
+                                    <option value="480">8H</option>
+                                    <option value="600">10H</option>
+                                    <option value="720">1D</option>
+                                    <option value="10080">1W</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="row mt-3">
+                    <div class="col-md-12">
+                        <div class="alert alert-info py-2 mb-0 d-flex justify-content-between align-items-center">
+                            <div>
+                                <small id="rtExchangeStatusText">Selected: All 10 exchanges</small>
+                            </div>
+                            <div>
+                                <button class="btn btn-sm btn-primary" onclick="runRealTimeAnalysis()">
+                                    <span class="spinner-border spinner-border-sm d-none" id="rtSpinner"></span>
+                                    Run Analysis
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Main Analysis Dashboard - COMPACTED -->
+            <div class="row mb-3">
+                <!-- Price & Volume Card -->
+                <div class="col-md-4 mb-3">
+                    <div class="card rt-card h-100">
+                        <div class="card-body">
+                            <p class="rt-label">Current Price</p>
+                            <p class="rt-metric" id="rtCurrentPrice">--</p>
+                            <p class="rt-change-positive mb-0" id="rtPriceChange">--</p>
+                            <hr class="my-2">
+                            <p class="rt-label">24h Volume</p>
+                            <p class="rt-metric" id="rt24hVolume">--</p>
+                            <p class="rt-timestamp" id="rtLastUpdate">--</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Order Flow Card -->
+                <div class="col-md-4 mb-3">
+                    <div class="card rt-card h-100">
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-6">
+                                    <p class="rt-label">Buy Pressure</p>
+                                    <p class="rt-metric" id="rtBuyPressure">--</p>
+                                    <p class="rt-label">Bid Depth</p>
+                                    <p class="rt-metric" id="rtBidDepth">--</p>
+                                </div>
+                                <div class="col-6">
+                                    <p class="rt-label">Sell Pressure</p>
+                                    <p class="rt-metric" id="rtSellPressure">--</p>
+                                    <p class="rt-label">Ask Depth</p>
+                                    <p class="rt-metric" id="rtAskDepth">--</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Trading Signal Card -->
+                <div class="col-md-4 mb-3">
+                    <div class="card signal-card h-100" id="rtSignalCard">
+                        <div class="card-body text-center">
+                            <h6 class="card-title">Trading Signal</h6>
+                            <div class="display-4 mb-2" id="rtSignalIcon">📊</div>
+                            <h5 class="mb-1" id="rtSignalText">ANALYZING</h5>
+                            <p class="text-muted mb-1 small" id="rtSignalConfidence">Confidence: --%</p>
+                            <p class="mb-0 small" id="rtSignalReason">Waiting for analysis...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Order Imbalance Bar -->
+            <div class="card mb-3">
+                <div class="card-body">
+                    <h6 class="card-title">Order Flow Imbalance</h6>
+                    <div class="progress" style="height: 25px;">
+                        <div id="rtImbalanceBar" class="progress-bar" role="progressbar" style="width: 50%">
+                            <span class="fw-bold" id="rtImbalanceValue">0.00%</span>
+                        </div>
+                    </div>
+                    <div class="d-flex justify-content-between mt-1">
+                        <small class="text-danger">Strong Sell</small>
+                        <small class="text-muted">Neutral</small>
+                        <small class="text-success">Strong Buy</small>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Charts Section - IMPROVED LAYOUT -->
+            <div class="row mb-3">
+                <div class="col-md-12 mb-3">
+                    <div class="card h-50">
+                        <div class="card-header">Market Depth Visualization</div>
+                        <div class="card-body p-2">
+                            <canvas id="marketDepthChart" class="market-depth-chart w-100"></canvas>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="col-md-12 mb-3">
+                    <div class="card h-100">
+                        <div class="card-header">Price Prediction</div>
+                        <div class="card-body">
+                            <div class="row text-center mb-2">
+                                <div class="col-6">
+                                    <p class="rt-label">Next 5min</p>
+                                    <p class="rt-metric" id="rtPred5min">--</p>
+                                    <p class="rt-change-positive small" id="rtPred5minChange">--</p>
+                                </div>
+                                <div class="col-6">
+                                    <p class="rt-label">Next 15min</p>
+                                    <p class="rt-metric" id="rtPred15min">--</p>
+                                    <p class="rt-change-positive small" id="rtPred15minChange">--</p>
+                                </div>
+                            </div>
+                            <hr class="my-2">
+                            <div class="mb-2">
+                                <p class="rt-label mb-1">Support</p>
+                                <p class="rt-metric text-success small" id="rtSupport">--</p>
+                            </div>
+                            <div>
+                                <p class="rt-label mb-1">Resistance</p>
+                                <p class="rt-metric text-danger small" id="rtResistance">--</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Trade Flow Analysis - COMPACTED -->
+            <div class="card mb-3">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span>Trade Flow Analysis</span>
+                    <div class="small text-muted">Last 10 minutes</div>
+                </div>
+                <div class="card-body p-2">
+                    <div class="row">
+                        <div class="col-md-8">
+                            <canvas id="tradeFlowChart" class="trade-flow-chart w-100"></canvas>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="row h-100 align-items-center">
+                                <div class="col-6 text-center">
+                                    <p class="rt-label">Buy Trades</p>
+                                    <p class="rt-metric text-success" id="rtBuyTrades">--</p>
+                                </div>
+                                <div class="col-6 text-center">
+                                    <p class="rt-label">Sell Trades</p>
+                                    <p class="rt-metric text-danger" id="rtSellTrades">--</p>
+                                </div>
+                                <div class="col-12 text-center mt-2">
+                                    <p class="rt-label">Buy/Sell Ratio</p>
+                                    <p class="rt-metric" id="rtTradeRatio">--</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Order Book Heatmap - COMPACTED -->
+            <div class="card mb-3">
+                <div class="card-header">Order Book Heatmap (Top 8 Levels)</div>
+                <div class="card-body p-2">
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered compact-table mb-0" id="orderBookHeatmap">
+                            <thead>
+                                <tr>
+                                    <th class="text-center">Level</th>
+                                    <th class="text-center">Bid Size</th>
+                                    <th class="text-center">Price</th>
+                                    <th class="text-center">Ask Size</th>
+                                </tr>
+                            </thead>
+                            <tbody id="heatmapBody">
+                                <!-- Will be populated by JavaScript -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Market Sentiment - COMPACTED -->
+            <div class="card mb-3">
+                <div class="card-header">Market Sentiment Analysis</div>
+                <div class="card-body p-2">
+                    <div class="row">
+                        <div class="col-md-3 text-center">
+                            <p class="rt-label">Overall Sentiment</p>
+                            <div class="display-4 mb-1" id="rtSentimentIcon">😐</div>
+                            <h5 id="rtSentimentText">Neutral</h5>
+                        </div>
+                        <div class="col-md-9">
+                            <div class="row">
+                                <div class="col-4 text-center">
+                                    <div class="card h-100">
+                                        <div class="card-body p-2">
+                                            <p class="rt-label">Volume Trend</p>
+                                            <p class="rt-metric" id="rtVolumeTrend">--</p>
+                                            <p class="rt-timestamp">Last 5min</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-4 text-center">
+                                    <div class="card h-100">
+                                        <div class="card-body p-2">
+                                            <p class="rt-label">Volatility</p>
+                                            <p class="rt-metric" id="rtVolatility">--</p>
+                                            <p class="rt-timestamp">ATR (5min)</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-4 text-center">
+                                    <div class="card h-100">
+                                        <div class="card-body p-2">
+                                            <p class="rt-label">Momentum</p>
+                                            <p class="rt-metric" id="rtMomentum">--</p>
+                                            <p class="rt-timestamp">Rate of Change</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Analysis Log - COMPACTED -->
+            <div class="card">
+                <div class="card-header">Recent Analysis Log</div>
+                <div class="card-body p-2">
+                    <div class="table-responsive">
+                        <table class="table table-sm compact-table mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Time</th>
+                                    <th>Signal</th>
+                                    <th>Price</th>
+                                    <th>Imbalance</th>
+                                    <th>Volume</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="rtAnalysisLog">
+                                <tr>
+                                    <td colspan="6" class="text-center text-muted">No analysis data yet</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- PREDICTIONS - FIXED VERSION -->
+        <div class="tab-pane fade" id="predictions">
+            <h4 class="mb-3">Multi-Timeframe Predictions & Technical Analysis</h4>
+            
+            <!-- Symbol and Controls -->
+            <div class="row mb-4">
+                <div class="col-md-4">
+                    <label class="form-label fw-bold">Prediction Symbol</label>
+                    <input id="predictionSymbol" class="form-control" value="BTC/USDT" placeholder="e.g. ETH/USDT">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label fw-bold">Primary Timeframe</label>
+                    <select id="primaryTimeframe" class="form-select">
+                        <option value="1h">1 Hour</option>
+                        <option value="4h" selected>4 Hours</option>
+                        <option value="1d">1 Day</option>
+                        <option value="1w">1 Week</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label fw-bold">Analysis Depth</label>
+                    <select id="analysisDepth" class="form-select">
+                        <option value="50">50 Candles</option>
+                        <option value="100" selected>100 Candles</option>
+                        <option value="200">200 Candles</option>
+                        <option value="500">500 Candles</option>
+                    </select>
+                </div>
+                <div class="col-md-2 d-flex align-items-end">
+                    <button class="btn btn-primary w-100" onclick="runMultiTimeframeAnalysis()">Analyze All</button>
+                </div>
+            </div>
+            
+            <!-- Main Prediction Card -->
+            <div class="card mb-4 border-primary">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0">Overall Market Prediction & Signals</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div id="mainPredictionSignal" class="text-center p-3 rounded mb-3">
+                                <h3 class="mb-2">LOADING...</h3>
+                                <p class="mb-1">Overall Trend: <span id="overallTrend">-</span></p>
+                                <p class="mb-1">Confidence: <span id="overallConfidence">-</span>%</p>
+                                <p class="mb-0">Recommended Action: <span id="recommendedAction">-</span></p>
+                            </div>
+                            
+                            <div class="row">
+                                <div class="col-6">
+                                    <div class="card h-100">
+                                        <div class="card-header bg-light">Next 1H Prediction</div>
+                                        <div class="card-body text-center">
+                                            <h4 id="pred1hChange" class="mb-1">-</h4>
+                                            <small id="pred1hSignal" class="text-muted">Signal: -</small>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-6">
+                                    <div class="card h-100">
+                                        <div class="card-header bg-light">Next 4H Prediction</div>
+                                        <div class="card-body text-center">
+                                            <h4 id="pred4hChange" class="mb-1">-</h4>
+                                            <small id="pred4hSignal" class="text-muted">Signal: -</small>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <div class="card h-100">
+                                <div class="card-header bg-light">Technical Summary</div>
+                                <div class="card-body">
+                                    <div class="row">
+                                        <div class="col-6">
+                                            <p class="mb-1"><strong>RSI Status:</strong> <span id="rsiStatus">-</span></p>
+                                            <p class="mb-1"><strong>MACD:</strong> <span id="macdStatus">-</span></p>
+                                            <p class="mb-1"><strong>Trend:</strong> <span id="trendStatus">-</span></p>
+                                        </div>
+                                        <div class="col-6">
+                                            <p class="mb-1"><strong>Support:</strong> <span id="supportLevel">-</span></p>
+                                            <p class="mb-1"><strong>Resistance:</strong> <span id="resistanceLevel">-</span></p>
+                                            <p class="mb-1"><strong>Volatility:</strong> <span id="volatilityStatus">-</span></p>
+                                        </div>
+                                    </div>
+                                    <hr>
+                                    <p class="mb-1"><strong>Key Levels:</strong></p>
+                                    <div class="small">
+                                        <p class="mb-1">Immediate Support: <span id="immediateSupport">-</span></p>
+                                        <p class="mb-1">Immediate Resistance: <span id="immediateResistance">-</span></p>
+                                        <p class="mb-0">Stop Loss Zone: <span id="stopLossZone">-</span></p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Chart Visualization -->
+            <div class="card mb-4">
+                <div class="card-header">Live Chart Visualization</div>
+                <div class="card-body p-0">
+                    <!-- TradingView Widget -->
+                    <div class="tradingview-widget-container" style="height: 400px;">
+                        <div id="tradingview_chart" style="height: 100%; width: 100%;"></div>
+                        <div class="tradingview-widget-copyright">
+                            <a href="https://www.tradingview.com/" rel="noopener nofollow" target="_blank">
+                                <span class="blue-text">Track all markets on TradingView</span>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Multi-Timeframe Analysis Table -->
+            <div class="card">
+                <div class="card-header">Detailed Timeframe Analysis</div>
+                <div class="card-body p-0">
+                    <table class="table table-bordered table-hover mb-0">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>Timeframe</th>
+                                <th>Predicted %</th>
+                                <th>Signal</th>
+                                <th>Confidence</th>
+                                <th>RSI</th>
+                                <th>MACD</th>
+                                <th>Support</th>
+                                <th>Resistance</th>
+                                <th>Recommendation</th>
+                            </tr>
+                        </thead>
+                        <tbody id="timeframeAnalysisBody">
+                            <tr><td colspan="9" class="text-center text-muted">Run analysis to see predictions</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            
+            <!-- Prediction History -->
+            <div class="card mt-4">
+                <div class="card-header">Recent Predictions Log</div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-sm table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Time</th>
+                                    <th>Symbol</th>
+                                    <th>Timeframe</th>
+                                    <th>Prediction</th>
+                                    <th>Actual</th>
+                                    <th>Accuracy</th>
+                                    <th>Signal</th>
+                                </tr>
+                            </thead>
+                            <tbody id="predictionHistoryBody">
+                                <tr><td colspan="7" class="text-center text-muted">No prediction history yet</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- SYSTEM -->
+        <div class="tab-pane fade" id="system">
+            <div class="text-center my-3">
+                <h4>Binance Symbol Sync</h4>
+                <p>Fetch all Binance spot symbols via ccxt and store only new ones in the database.</p>
+                <button class="btn btn-secondary" onclick="syncBinanceSymbols()">Sync Binance Symbols</button>
+                <div id="symbolSyncAlert" class="mt-3"></div>
+            </div>
+            <table class="table table-sm table-bordered w-50 mx-auto">
+                <tbody>
+                    <tr><th>Total markets</th><td id="syncTotal">-</td></tr>
+                    <tr><th>Already in DB</th><td id="syncExisting">-</td></tr>
+                    <tr><th>Newly added</th><td id="syncNew">-</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- SYMBOLS -->
+        <div class="tab-pane fade" id="symbols">
+            <div class="row g-3 mb-3">
+                <div class="col-md-6">
+                    <input id="symbolSearch" class="form-control" placeholder="Search e.g. USDT, USDC, BTC, ETH, BTC/USDT">
+                </div>
+                <div class="col-md-3">
+                    <button class="btn btn-primary w-100" onclick="searchSymbols()">Search</button>
+                </div>
+                <div class="col-md-3">
+                    <button class="btn btn-success w-100" onclick="exportSymbolsExcel()">Export Excel</button>
+                </div>
+            </div>
+            <div id="symbolsAlert"></div>
+            <table class="table table-bordered table-sm">
+                <thead class="table-dark">
+                    <tr>
+                        <th>#</th><th>Symbol</th><th>Base</th><th>Quote</th><th>Active</th><th>Added At</th>
+                    </tr>
+                </thead>
+                <tbody id="symbolsBody"></tbody>
+            </table>
+        </div>
+
+        <!-- TRAIN BOT -->
+        <div class="tab-pane fade" id="trainBot">
+            <h4 class="mb-3">Train Prediction Model</h4>
+            <div class="row g-3 mb-3">
+                <div class="col-md-4">
+                    <label class="form-label">Symbol</label>
+                    <input id="trainSymbol" class="form-control" value="BTC/USDT" placeholder="e.g. ETH/USDT">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Timeframes (multi-select)</label>
+                    <select id="trainTimeframes" class="form-select" multiple>
+                        <option value="1m">1m</option>
+                        <option value="5m">5m</option>
+                        <option value="15m">15m</option>
+                        <option value="1h">1h</option>
+                        <option value="4h" selected>4h</option>
+                        <option value="1d">1d</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Look Back</label>
+                    <input id="trainLookBack" type="number" class="form-control" value="50" min="10" max="200">
+                </div>
+                <div class="col-md-2 d-flex align-items-end">
+                    <button class="btn btn-primary w-100" onclick="trainBot()">Train Model</button>
+                </div>
+            </div>
+            <div id="trainAlert"></div>
+            <p class="text-muted">Trains patterns and weights from DB data. Run once per symbol/timeframe or after new data.</p>
+        </div>
+
+        <!-- PREDICT CANDLE -->
+        <div class="tab-pane fade" id="predictCandle">
+            <h4 class="mb-3">Predict Next Candle</h4>
+            <div class="row g-3 mb-3">
+                <div class="col-md-3">
+                    <label class="form-label">Symbol</label>
+                    <input id="predictSymbol" class="form-control" value="BTC/USDT" placeholder="e.g. ETH/USDT">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Timeframe</label>
+                    <select id="predictTimeframe" class="form-select">
+                        <option value="1m">1m</option>
+                        <option value="5m">5m</option>
+                        <option value="15m">15m</option>
+                        <option value="1h">1h</option>
+                        <option value="4h" selected>4h</option>
+                        <option value="1d">1d</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Look Back</label>
+                    <input id="predictLookBack" type="number" class="form-control" value="50" min="10" max="200">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Expander</label>
+                    <input id="predictExpander" type="number" class="form-control" value="1.33" min="1.0" max="2.0" step="0.01">
+                </div>
+                <div class="col-md-2 d-flex align-items-end">
+                    <button class="btn btn-success w-100" onclick="predictCandle()">Predict</button>
+                </div>
+            </div>
+            <div id="predictAlert"></div>
+            <div id="predictResults" class="border p-3 bg-light rounded mt-3">
+                <p class="text-muted">Run prediction to see results here (predicted % change, high/low bounds, confidence).</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Change this if your Flask runs on different port/host
+const API = "http://127.0.0.1:8000";
+
+// Chart instances
+let marketDepthChart = null;
+let tradeFlowChart = null;
+
+// === REAL-TIME ANALYSIS FUNCTIONS ===
+function toggleAllExchangesRT() {
+    const allCheckbox = document.getElementById("rtExchangeAll");
+    const exchangeCheckboxes = document.querySelectorAll(".rt-exchange-checkbox");
+    
+    exchangeCheckboxes.forEach(checkbox => {
+        checkbox.checked = allCheckbox.checked;
+    });
+    
+    updateExchangeStatusRT();
+}
+
+function updateExchangeSelectionRT() {
+    const exchangeCheckboxes = document.querySelectorAll(".rt-exchange-checkbox");
+    const allCheckbox = document.getElementById("rtExchangeAll");
+    
+    // Check if all exchange checkboxes are checked
+    let allChecked = true;
+    exchangeCheckboxes.forEach(checkbox => {
+        if (!checkbox.checked) allChecked = false;
+    });
+    
+    allCheckbox.checked = allChecked;
+    updateExchangeStatusRT();
+}
+
+function updateExchangeStatusRT() {
+    const exchangeCheckboxes = document.querySelectorAll(".rt-exchange-checkbox:checked");
+    const exchangeNames = Array.from(exchangeCheckboxes).map(cb => {
+        const value = cb.value;
+        // Format exchange names nicely
+        const namesMap = {
+            'binance': 'Binance',
+            'bybit': 'Bybit',
+            'okx': 'OKX',
+            'gateio': 'Gate.io',
+            'kucoin': 'KuCoin',
+            'huobi': 'Huobi',
+            'kraken': 'Kraken',
+            'bitget': 'Bitget',
+            'mexc': 'MEXC',
+            'coinbase': 'Coinbase'
+        };
+        return namesMap[value] || value.charAt(0).toUpperCase() + value.slice(1);
+    });
+    
+    const statusElement = document.getElementById("rtExchangeStatusText");
+    if (exchangeNames.length === 0) {
+        statusElement.innerHTML = '<span class="text-danger">No exchanges selected. Please select at least one exchange.</span>';
+    } else {
+        statusElement.innerHTML = `<small>Selected: ${exchangeNames.join(', ')}</small>`;
+    }
+}
+
+function getSelectedExchangesRT() {
+    const exchangeCheckboxes = document.querySelectorAll(".rt-exchange-checkbox:checked");
+    return Array.from(exchangeCheckboxes).map(cb => cb.value);
+}
+
+async function runRealTimeAnalysis() {
+    const spinner = document.getElementById("rtSpinner");
+    const button = spinner.parentElement;
+    
+    // Show loading state
+    spinner.classList.remove("d-none");
+    button.disabled = true;
+    
+    try {
+        // Get selected exchanges
+        const selectedExchanges = getSelectedExchangesRT();
+        if (selectedExchanges.length === 0) {
+            alert("Please select at least one exchange for analysis.");
+            return;
+        }
+        
+        // Fetch real-time data
+        const res = await fetch(API + "/realtime_data");
+        const data = await res.json();
+        
+        if (!data || !data.current_symbol) {
+            throw new Error("No real-time data available");
+        }
+        
+        // Analyze the data
+        const analysis = await analyzeRealTimeData(data, selectedExchanges);
+        
+        // Update UI with analysis
+        updateRealTimeAnalysisUI(analysis);
+        
+        // Update charts
+        updateRealTimeCharts(analysis);
+        
+        // Add to analysis log
+        addToAnalysisLog(analysis);
+        
+    } catch (error) {
+        console.error("Real-time analysis error:", error);
+        showRealTimeError(error.message);
+    } finally {
+        // Hide loading state
+        spinner.classList.add("d-none");
+        button.disabled = false;
+    }
+}
+
+async function analyzeRealTimeData(data, selectedExchanges) {
+    const now = Date.now() / 1000;
+    const timeWindow = parseInt(document.getElementById("rtTimeWindow").value);
+    const predictionHorizon = parseInt(document.getElementById("rtPredictionHorizon").value);
+    
+    // Filter data by selected exchanges
+    const filteredOrderBook = {};
+    selectedExchanges.forEach(ex => {
+        if (data.order_book && data.order_book[ex]) {
+            filteredOrderBook[ex] = data.order_book[ex];
+        }
+    });
+    
+    // Filter trades by selected exchanges and time window
+    const recentTrades = data.trades.filter(t => {
+        return selectedExchanges.includes(t[4]) && (now - t[2] <= timeWindow);
+    });
+    
+    // Calculate combined order book metrics
+    let combinedBids = [];
+    let combinedAsks = [];
+    let totalBidVolume = 0;
+    let totalAskVolume = 0;
+    
+    for (const ex in filteredOrderBook) {
+        filteredOrderBook[ex].bids.forEach(bid => {
+            combinedBids.push(bid);
+            totalBidVolume += bid[1];
+        });
+        filteredOrderBook[ex].asks.forEach(ask => {
+            combinedAsks.push(ask);
+            totalAskVolume += ask[1];
+        });
+    }
+    
+    // Sort bids descending and asks ascending
+    combinedBids.sort((a, b) => b[0] - a[0]);
+    combinedAsks.sort((a, b) => a[0] - b[0]);
+    
+    // Calculate order flow imbalance
+    const totalVolume = totalBidVolume + totalAskVolume;
+    const orderFlowImbalance = totalVolume > 0 ? (totalBidVolume - totalAskVolume) / totalVolume : 0;
+    
+    // Calculate trade metrics
+    let buyTrades = 0;
+    let sellTrades = 0;
+    let buyVolume = 0;
+    let sellVolume = 0;
+    let tradePrices = [];
+    
+    recentTrades.forEach(trade => {
+        if (trade[3] === 'b') {
+            buyTrades++;
+            buyVolume += trade[1];
+        } else {
+            sellTrades++;
+            sellVolume += trade[1];
+        }
+        tradePrices.push(trade[0]);
+    });
+    
+    const totalTrades = buyTrades + sellTrades;
+    const tradeRatio = totalTrades > 0 ? buyTrades / totalTrades : 0.5;
+    
+    // Calculate price metrics
+    let currentPrice = 0;
+    if (tradePrices.length > 0) {
+        currentPrice = tradePrices[tradePrices.length - 1];
+    } else if (combinedBids.length > 0 && combinedAsks.length > 0) {
+        currentPrice = (combinedBids[0][0] + combinedAsks[0][0]) / 2;
+    }
+    
+    // Calculate price change
+    let priceChange = 0;
+    if (tradePrices.length >= 2) {
+        const oldestPrice = tradePrices[0];
+        const latestPrice = tradePrices[tradePrices.length - 1];
+        priceChange = ((latestPrice - oldestPrice) / oldestPrice) * 100;
+    }
+    
+    // Calculate volatility (standard deviation of recent prices)
+    let volatility = 0;
+    if (tradePrices.length >= 2) {
+        const mean = tradePrices.reduce((a, b) => a + b, 0) / tradePrices.length;
+        const variance = tradePrices.reduce((sum, price) => sum + Math.pow(price - mean, 2), 0) / tradePrices.length;
+        volatility = Math.sqrt(variance) / mean * 100;
+    }
+    
+    // Calculate momentum (rate of change)
+    let momentum = 0;
+    if (tradePrices.length >= 5) {
+        const recentPrices = tradePrices.slice(-5);
+        momentum = ((recentPrices[4] - recentPrices[0]) / recentPrices[0]) * 100;
+    }
+    
+    // Calculate VWAP
+    let vwap = 0;
+    if (recentTrades.length > 0) {
+        let totalValue = 0;
+        let totalVolumeTraded = 0;
+        recentTrades.forEach(trade => {
+            totalValue += trade[0] * trade[1];
+            totalVolumeTraded += trade[1];
+        });
+        vwap = totalValue / totalVolumeTraded;
+    }
+    
+    // Calculate support and resistance from order book
+    const supportLevels = combinedBids.slice(0, 5).map(bid => bid[0]);
+    const resistanceLevels = combinedAsks.slice(0, 5).map(ask => ask[0]);
+    
+    // Generate trading signal
+    const signal = generateTradingSignal({
+        orderFlowImbalance,
+        tradeRatio,
+        priceChange,
+        volatility,
+        momentum,
+        currentPrice,
+        vwap,
+        supportLevels,
+        resistanceLevels
+    });
+    
+    // Generate price predictions
+    const predictions = generatePricePredictions({
+        currentPrice,
+        orderFlowImbalance,
+        momentum,
+        volatility,
+        predictionHorizon
+    });
+    
+    // Calculate market sentiment
+    const sentiment = calculateMarketSentiment({
+        orderFlowImbalance,
+        tradeRatio,
+        momentum,
+        volatility
+    });
+    
+    return {
+        timestamp: now,
+        symbol: data.current_symbol,
+        currentPrice,
+        priceChange,
+        orderFlowImbalance,
+        totalBidVolume,
+        totalAskVolume,
+        buyTrades,
+        sellTrades,
+        buyVolume,
+        sellVolume,
+        tradeRatio,
+        volatility,
+        momentum,
+        vwap,
+        supportLevels,
+        resistanceLevels,
+        combinedBids: combinedBids.slice(0, 8), // Top 8 bids for heatmap
+        combinedAsks: combinedAsks.slice(0, 8), // Top 8 asks for heatmap
+        recentTrades: recentTrades.slice(-20),
+        signal,
+        predictions,
+        sentiment,
+        selectedExchanges,
+        timeWindow
+    };
+}
+
+function generateTradingSignal(metrics) {
+    let score = 50;
+    let reasons = [];
+    
+    // Order flow imbalance contribution
+    if (metrics.orderFlowImbalance > 0.3) {
+        score += 25;
+        reasons.push("Strong buy pressure in order book");
+    } else if (metrics.orderFlowImbalance > 0.1) {
+        score += 15;
+        reasons.push("Moderate buy pressure");
+    } else if (metrics.orderFlowImbalance < -0.3) {
+        score -= 25;
+        reasons.push("Strong sell pressure in order book");
+    } else if (metrics.orderFlowImbalance < -0.1) {
+        score -= 15;
+        reasons.push("Moderate sell pressure");
+    }
+    
+    // Trade ratio contribution
+    if (metrics.tradeRatio > 0.7) {
+        score += 20;
+        reasons.push("High buy trade ratio");
+    } else if (metrics.tradeRatio < 0.3) {
+        score -= 20;
+        reasons.push("High sell trade ratio");
+    }
+    
+    // Momentum contribution
+    if (metrics.momentum > 0.5) {
+        score += 15;
+        reasons.push("Positive momentum");
+    } else if (metrics.momentum < -0.5) {
+        score -= 15;
+        reasons.push("Negative momentum");
+    }
+    
+    // Volatility adjustment
+    if (metrics.volatility > 1) {
+        score -= 10;
+        reasons.push("High volatility - caution advised");
+    }
+    
+    // Price vs VWAP
+    if (metrics.currentPrice > metrics.vwap * 1.001) {
+        score += 10;
+        reasons.push("Price above VWAP (bullish)");
+    } else if (metrics.currentPrice < metrics.vwap * 0.999) {
+        score -= 10;
+        reasons.push("Price below VWAP (bearish)");
+    }
+    
+    // Cap score between 0 and 100
+    score = Math.max(0, Math.min(100, score));
+    
+    // Determine signal
+    let signal, icon, confidence, colorClass;
+    
+    if (score >= 80) {
+        signal = "STRONG BUY";
+        icon = "🚀";
+        confidence = "High";
+        colorClass = "buy";
+    } else if (score >= 65) {
+        signal = "BUY";
+        icon = "📈";
+        confidence = "Medium";
+        colorClass = "buy";
+    } else if (score >= 45) {
+        signal = "HOLD";
+        icon = "⏸️";
+        confidence = "Low";
+        colorClass = "neutral";
+    } else if (score >= 30) {
+        signal = "SELL";
+        icon = "📉";
+        confidence = "Medium";
+        colorClass = "sell";
+    } else {
+        signal = "STRONG SELL";
+        icon = "🔥";
+        confidence = "High";
+        colorClass = "sell";
+    }
+    
+    return {
+        signal,
+        icon,
+        confidence,
+        score,
+        reasons: reasons.slice(0, 3),
+        colorClass
+    };
+}
+
+function generatePricePredictions(metrics) {
+    const { currentPrice, orderFlowImbalance, momentum, volatility, predictionHorizon } = metrics;
+    
+    // Base prediction based on order flow and momentum
+    const baseChange = (orderFlowImbalance * 0.5 + momentum * 0.02) * predictionHorizon;
+    
+    // Add volatility adjustment
+    const volatilityAdjustment = (volatility / 100) * Math.sqrt(predictionHorizon) * (Math.random() - 0.5);
+    
+    // Calculate predictions for different timeframes
+    const pred5min = currentPrice * (1 + (baseChange * 5 / predictionHorizon + volatilityAdjustment * 0.5) / 100);
+    const pred15min = currentPrice * (1 + (baseChange * 15 / predictionHorizon + volatilityAdjustment) / 100);
+    
+    // Calculate prediction range (confidence interval)
+    const rangeMultiplier = 1 + (volatility / 100) * 0.5;
+    const lowerRange = pred15min * (1 - (volatility / 100) * 0.3);
+    const upperRange = pred15min * (1 + (volatility / 100) * 0.3);
+    
+    return {
+        pred5min,
+        pred15min,
+        pred5minChange: ((pred5min - currentPrice) / currentPrice * 100).toFixed(3),
+        pred15minChange: ((pred15min - currentPrice) / currentPrice * 100).toFixed(3),
+        range: {
+            lower: lowerRange,
+            upper: upperRange
+        }
+    };
+}
+
+function calculateMarketSentiment(metrics) {
+    let sentimentScore = 50;
+    
+    // Order flow contribution
+    sentimentScore += metrics.orderFlowImbalance * 25;
+    
+    // Trade ratio contribution
+    sentimentScore += (metrics.tradeRatio - 0.5) * 20;
+    
+    // Momentum contribution
+    sentimentScore += metrics.momentum * 5;
+    
+    // Cap score between 0 and 100
+    sentimentScore = Math.max(0, Math.min(100, sentimentScore));
+    
+    // Determine sentiment
+    let sentiment, icon;
+    
+    if (sentimentScore >= 70) {
+        sentiment = "Bullish";
+        icon = "😊";
+    } else if (sentimentScore >= 60) {
+        sentiment = "Slightly Bullish";
+        icon = "🙂";
+    } else if (sentimentScore >= 40) {
+        sentiment = "Neutral";
+        icon = "😐";
+    } else if (sentimentScore >= 30) {
+        sentiment = "Slightly Bearish";
+        icon = "😕";
+    } else {
+        sentiment = "Bearish";
+        icon = "😟";
+    }
+    
+    return {
+        sentiment,
+        icon,
+        score: Math.round(sentimentScore)
+    };
+}
+
+function updateRealTimeAnalysisUI(analysis) {
+    // Update price metrics
+    document.getElementById("rtCurrentPrice").textContent = analysis.currentPrice.toFixed(6);
+    const priceChangeElement = document.getElementById("rtPriceChange");
+    priceChangeElement.textContent = `${analysis.priceChange >= 0 ? '+' : ''}${analysis.priceChange.toFixed(3)}%`;
+    priceChangeElement.className = analysis.priceChange >= 0 ? 'rt-change-positive' : 'rt-change-negative';
+    
+    // Update order flow metrics
+    document.getElementById("rtBuyPressure").textContent = formatVolume(analysis.buyVolume);
+    document.getElementById("rtSellPressure").textContent = formatVolume(analysis.sellVolume);
+    document.getElementById("rtBidDepth").textContent = analysis.combinedBids.length;
+    document.getElementById("rtAskDepth").textContent = analysis.combinedAsks.length;
+    
+    // Update order flow imbalance
+    const imbalancePercent = (analysis.orderFlowImbalance * 100).toFixed(2);
+    const imbalanceBar = document.getElementById("rtImbalanceBar");
+    const imbalanceValue = document.getElementById("rtImbalanceValue");
+    
+    // Calculate bar position (0-100% with 50% as neutral)
+    let barPosition = 50 + (analysis.orderFlowImbalance * 50);
+    barPosition = Math.max(0, Math.min(100, barPosition));
+    
+    imbalanceBar.style.width = `${barPosition}%`;
+    imbalanceValue.textContent = `${imbalancePercent}%`;
+    
+    // Set bar color based on imbalance
+    if (analysis.orderFlowImbalance > 0.1) {
+        imbalanceBar.className = "progress-bar bg-success";
+    } else if (analysis.orderFlowImbalance > 0.01) {
+        imbalanceBar.className = "progress-bar bg-info";
+    } else if (analysis.orderFlowImbalance < -0.1) {
+        imbalanceBar.className = "progress-bar bg-danger";
+    } else if (analysis.orderFlowImbalance < -0.01) {
+        imbalanceBar.className = "progress-bar bg-warning";
+    } else {
+        imbalanceBar.className = "progress-bar bg-secondary";
+    }
+    
+    // Update trade metrics
+    document.getElementById("rtBuyTrades").textContent = analysis.buyTrades;
+    document.getElementById("rtSellTrades").textContent = analysis.sellTrades;
+    document.getElementById("rtTradeRatio").textContent = (analysis.tradeRatio * 100).toFixed(1) + "%";
+    
+    // Update trading signal
+    const signalCard = document.getElementById("rtSignalCard");
+    signalCard.className = `card signal-card ${analysis.signal.colorClass} h-100`;
+    document.getElementById("rtSignalIcon").textContent = analysis.signal.icon;
+    document.getElementById("rtSignalText").textContent = analysis.signal.signal;
+    document.getElementById("rtSignalConfidence").textContent = `Confidence: ${analysis.signal.score}%`;
+    document.getElementById("rtSignalReason").textContent = analysis.signal.reasons.join(", ");
+    
+    // Update price predictions
+    document.getElementById("rtPred5min").textContent = analysis.predictions.pred5min.toFixed(6);
+    document.getElementById("rtPred15min").textContent = analysis.predictions.pred15min.toFixed(6);
+    const pred5minChange = document.getElementById("rtPred5minChange");
+    const pred15minChange = document.getElementById("rtPred15minChange");
+    
+    pred5minChange.textContent = `${analysis.predictions.pred5minChange >= 0 ? '+' : ''}${analysis.predictions.pred5minChange}%`;
+    pred5minChange.className = analysis.predictions.pred5minChange >= 0 ? 'rt-change-positive small' : 'rt-change-negative small';
+    
+    pred15minChange.textContent = `${analysis.predictions.pred15minChange >= 0 ? '+' : ''}${analysis.predictions.pred15minChange}%`;
+    pred15minChange.className = analysis.predictions.pred15minChange >= 0 ? 'rt-change-positive small' : 'rt-change-negative small';
+    
+    // Update support and resistance
+    if (analysis.supportLevels.length > 0) {
+        document.getElementById("rtSupport").textContent = analysis.supportLevels[0].toFixed(6);
+    }
+    if (analysis.resistanceLevels.length > 0) {
+        document.getElementById("rtResistance").textContent = analysis.resistanceLevels[0].toFixed(6);
+    }
+    
+    // Update market sentiment
+    document.getElementById("rtSentimentIcon").textContent = analysis.sentiment.icon;
+    document.getElementById("rtSentimentText").textContent = analysis.sentiment.sentiment;
+    
+    // Update other metrics
+    document.getElementById("rtVolumeTrend").textContent = analysis.buyVolume > analysis.sellVolume ? "↑ Bullish" : "↓ Bearish";
+    document.getElementById("rtVolatility").textContent = analysis.volatility.toFixed(2) + "%";
+    document.getElementById("rtMomentum").textContent = `${analysis.momentum >= 0 ? '+' : ''}${analysis.momentum.toFixed(2)}%`;
+    
+    // Update timestamp
+    const now = new Date();
+    document.getElementById("rtLastUpdate").textContent = `Updated: ${now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'})}`;
+    
+    // Update 24h volume (placeholder - would need real data)
+    document.getElementById("rt24hVolume").textContent = formatVolume(analysis.buyVolume + analysis.sellVolume);
+}
+
+function updateRealTimeCharts(analysis) {
+    // Update market depth chart
+    updateMarketDepthChart(analysis);
+    
+    // Update trade flow chart
+    updateTradeFlowChart(analysis);
+    
+    // Update order book heatmap
+    updateOrderBookHeatmap(analysis);
+}
+
+function updateMarketDepthChart(analysis) {
+    const ctx = document.getElementById('marketDepthChart').getContext('2d');
+    
+    // Prepare data for depth chart - use top 8 levels for better visibility
+    const bidPrices = analysis.combinedBids.slice(0, 8).map(bid => bid[0]);
+    const bidVolumes = analysis.combinedBids.slice(0, 8).map(bid => bid[1]);
+    const askPrices = analysis.combinedAsks.slice(0, 8).map(ask => ask[0]);
+    const askVolumes = analysis.combinedAsks.slice(0, 8).map(ask => ask[1]);
+    
+    // Reverse bids for proper depth chart display
+    bidPrices.reverse();
+    bidVolumes.reverse();
+    
+    // Create or update chart
+    if (marketDepthChart) {
+        marketDepthChart.data.labels = [...bidPrices, ...askPrices];
+        marketDepthChart.data.datasets[0].data = [...bidVolumes, ...Array(askVolumes.length).fill(0)];
+        marketDepthChart.data.datasets[1].data = [...Array(bidVolumes.length).fill(0), ...askVolumes];
+        marketDepthChart.update('none');
+    } else {
+        marketDepthChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: [...bidPrices, ...askPrices],
+                datasets: [
+                    {
+                        label: 'Bid Volume',
+                        data: [...bidVolumes, ...Array(askVolumes.length).fill(0)],
+                        backgroundColor: 'rgba(25, 135, 84, 0.7)',
+                        borderColor: 'rgba(25, 135, 84, 1)',
+                        borderWidth: 1
+                    },
+                    {
+                        label: 'Ask Volume',
+                        data: [...Array(bidVolumes.length).fill(0), ...askVolumes],
+                        backgroundColor: 'rgba(220, 53, 69, 0.7)',
+                        borderColor: 'rgba(220, 53, 69, 1)',
+                        borderWidth: 1
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    title: {
+                        display: false
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return `${context.dataset.label === 'Bid Volume' ? 'Bid' : 'Ask'}: ${formatVolume(context.raw)}`;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        display: false
+                    },
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            callback: function(value) {
+                                return formatVolume(value);
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+}
+
+function updateTradeFlowChart(analysis) {
+    const ctx = document.getElementById('tradeFlowChart').getContext('2d');
+    
+    // Group trades by minute for the last 10 minutes
+    const tradesByMinute = {};
+    const now = Date.now() / 1000;
+    
+    // Initialize last 10 minutes
+    for (let i = 0; i < 10; i++) {
+        tradesByMinute[i] = { buy: 0, sell: 0 };
+    }
+    
+    // Populate with actual data
+    analysis.recentTrades.forEach(trade => {
+        const minute = Math.floor((now - trade[2]) / 60);
+        if (minute >= 0 && minute < 10) {
+            if (trade[3] === 'b') {
+                tradesByMinute[minute].buy += trade[1];
+            } else {
+                tradesByMinute[minute].sell += trade[1];
+            }
+        }
+    });
+    
+    // Prepare data for chart
+    const minutes = Array.from({length: 10}, (_, i) => i);
+    const buyVolumes = minutes.map(min => tradesByMinute[min]?.buy || 0);
+    const sellVolumes = minutes.map(min => tradesByMinute[min]?.sell || 0);
+    const labels = minutes.map(min => `${10 - min}m`);
+    
+    if (tradeFlowChart) {
+        tradeFlowChart.data.labels = labels;
+        tradeFlowChart.data.datasets[0].data = buyVolumes;
+        tradeFlowChart.data.datasets[1].data = sellVolumes;
+        tradeFlowChart.update('none');
+    } else {
+        tradeFlowChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Buy Volume',
+                        data: buyVolumes,
+                        borderColor: 'rgba(25, 135, 84, 1)',
+                        backgroundColor: 'rgba(25, 135, 84, 0.1)',
+                        fill: true,
+                        tension: 0.4,
+                        borderWidth: 2
+                    },
+                    {
+                        label: 'Sell Volume',
+                        data: sellVolumes,
+                        borderColor: 'rgba(220, 53, 69, 1)',
+                        backgroundColor: 'rgba(220, 53, 69, 0.1)',
+                        fill: true,
+                        tension: 0.4,
+                        borderWidth: 2
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return `${context.dataset.label}: ${formatVolume(context.raw)}`;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Minutes Ago'
+                        }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            callback: function(value) {
+                                return formatVolume(value);
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+}
+
+function updateOrderBookHeatmap(analysis) {
+    const tbody = document.getElementById("heatmapBody");
+    if (!tbody) return;
+    
+    tbody.innerHTML = "";
+    
+    // Get top 4 bids and top 4 asks
+    const topBids = analysis.combinedBids.slice(0, 4);
+    const topAsks = analysis.combinedAsks.slice(0, 4);
+    
+    // Create rows for bids (displayed first)
+    topBids.forEach((bid, index) => {
+        const row = document.createElement("tr");
+        const intensity = Math.min(100, Math.floor((bid[1] / analysis.totalBidVolume) * 100));
+        const color = `rgba(25, 135, 84, ${intensity / 100})`;
+        
+        row.innerHTML = `
+            <td class="text-center">B${index + 1}</td>
+            <td class="text-center">
+                <div class="heatmap-cell" style="background-color: ${color}; color: ${intensity > 50 ? 'white' : 'black'}">
+                    ${formatVolume(bid[1])}
+                </div>
+            </td>
+            <td class="text-center fw-bold">${bid[0].toFixed(6)}</td>
+            <td class="text-center">-</td>
+        `;
+        tbody.appendChild(row);
+    });
+    
+    // Create rows for asks
+    topAsks.forEach((ask, index) => {
+        const row = document.createElement("tr");
+        const intensity = Math.min(100, Math.floor((ask[1] / analysis.totalAskVolume) * 100));
+        const color = `rgba(220, 53, 69, ${intensity / 100})`;
+        
+        row.innerHTML = `
+            <td class="text-center">A${index + 1}</td>
+            <td class="text-center">-</td>
+            <td class="text-center fw-bold">${ask[0].toFixed(6)}</td>
+            <td class="text-center">
+                <div class="heatmap-cell" style="background-color: ${color}; color: ${intensity > 50 ? 'white' : 'black'}">
+                    ${formatVolume(ask[1])}
+                </div>
+            </td>
+        `;
+        tbody.appendChild(row);
+    });
+}
+
+function addToAnalysisLog(analysis) {
+    const tbody = document.getElementById("rtAnalysisLog");
+    if (!tbody) return;
+    
+    // Create new row
+    const row = document.createElement("tr");
+    
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+    
+    // Determine action based on signal
+    let action = "HOLD";
+    let actionClass = "text-warning";
+    
+    if (analysis.signal.signal.includes("BUY")) {
+        action = "BUY";
+        actionClass = "text-success fw-bold";
+    } else if (analysis.signal.signal.includes("SELL")) {
+        action = "SELL";
+        actionClass = "text-danger fw-bold";
+    }
+    
+    row.innerHTML = `
+        <td>${timeStr}</td>
+        <td><span class="${analysis.signal.colorClass}">${analysis.signal.signal}</span></td>
+        <td>${analysis.currentPrice.toFixed(6)}</td>
+        <td>${(analysis.orderFlowImbalance * 100).toFixed(1)}%</td>
+        <td>${formatVolume(analysis.buyVolume + analysis.sellVolume)}</td>
+        <td class="${actionClass}">${action}</td>
+    `;
+    
+    // Insert at top
+    if (tbody.firstChild && tbody.firstChild.textContent.includes('No analysis data')) {
+        tbody.innerHTML = '';
+    }
+    tbody.insertBefore(row, tbody.firstChild);
+    
+    // Keep only last 8 entries
+    const rows = tbody.getElementsByTagName('tr');
+    if (rows.length > 8) {
+        tbody.removeChild(rows[rows.length - 1]);
+    }
+}
+
+function showRealTimeError(message) {
+    const signalCard = document.getElementById("rtSignalCard");
+    signalCard.className = "card signal-card neutral h-100";
+    document.getElementById("rtSignalIcon").textContent = "❌";
+    document.getElementById("rtSignalText").textContent = "ERROR";
+    document.getElementById("rtSignalConfidence").textContent = "Please check connections";
+    document.getElementById("rtSignalReason").textContent = message;
+}
+
+function formatVolume(volume) {
+    if (volume >= 1000000) {
+        return (volume / 1000000).toFixed(2) + 'M';
+    } else if (volume >= 1000) {
+        return (volume / 1000).toFixed(2) + 'K';
+    }
+    return volume.toFixed(2);
+}
+
+// Auto-run analysis when tab is active
+document.querySelector('#mainTabs a[href="#realtimeAnalysis"]').addEventListener('shown.bs.tab', function() {
+    // Run initial analysis after a delay
+    setTimeout(() => {
+        if (getSelectedExchangesRT().length > 0) {
+            runRealTimeAnalysis();
+        }
+    }, 1000);
+    
+    // Set up auto-refresh every 10 seconds
+    if (window.rtAnalysisInterval) {
+        clearInterval(window.rtAnalysisInterval);
+    }
+    window.rtAnalysisInterval = setInterval(() => {
+        if (getSelectedExchangesRT().length > 0 && document.querySelector('#realtimeAnalysis').classList.contains('active')) {
+            runRealTimeAnalysis();
+        }
+    }, 10000);
+});
+
+document.querySelector('#mainTabs a[href="#realtimeAnalysis"]').addEventListener('hide.bs.tab', function() {
+    // Clear interval when leaving tab
+    if (window.rtAnalysisInterval) {
+        clearInterval(window.rtAnalysisInterval);
+        window.rtAnalysisInterval = null;
+    }
+});
+
+// Initialize exchange status on page load
+document.addEventListener("DOMContentLoaded", function() {
+    updateExchangeStatusRT();
+    updateExchangeStatus();
+    const currentYear = new Date().getFullYear();
+    document.getElementById("fromYear").value = currentYear - 1;
+    document.getElementById("toYear").value = currentYear;
+});
+
+// === EXCHANGE CHECKBOX FUNCTIONS ===
+function toggleAllExchanges() {
+    const allCheckbox = document.getElementById("exchangeAll");
+    const exchangeCheckboxes = document.querySelectorAll(".exchange-checkbox");
+    
+    exchangeCheckboxes.forEach(checkbox => {
+        checkbox.checked = allCheckbox.checked;
+    });
+    
+    updateExchangeStatus();
+    updateRealTime();
+}
+
+function updateExchangeSelection() {
+    const exchangeCheckboxes = document.querySelectorAll(".exchange-checkbox");
+    const allCheckbox = document.getElementById("exchangeAll");
+    
+    // Check if all exchange checkboxes are checked
+    let allChecked = true;
+    exchangeCheckboxes.forEach(checkbox => {
+        if (!checkbox.checked) allChecked = false;
+    });
+    
+    allCheckbox.checked = allChecked;
+    updateExchangeStatus();
+    updateRealTime();
+}
+
+function updateExchangeStatus() {
+    const exchangeCheckboxes = document.querySelectorAll(".exchange-checkbox:checked");
+    const exchangeNames = Array.from(exchangeCheckboxes).map(cb => {
+        const value = cb.value;
+        // Format exchange names nicely
+        const namesMap = {
+            'binance': 'Binance',
+            'bybit': 'Bybit',
+            'okx': 'OKX',
+            'gateio': 'Gate.io',
+            'kucoin': 'KuCoin',
+            'huobi': 'Huobi',
+            'kraken': 'Kraken',
+            'bitget': 'Bitget',
+            'mexc': 'MEXC',
+            'coinbase': 'Coinbase'
+        };
+        return namesMap[value] || value.charAt(0).toUpperCase() + value.slice(1);
+    });
+    
+    const statusElement = document.getElementById("exchangeStatus");
+    if (exchangeNames.length === 0) {
+        statusElement.innerHTML = '<small class="text-danger">No exchanges selected. Please select at least one exchange.</small>';
+    } else {
+        statusElement.innerHTML = `<small>Selected: ${exchangeNames.join(', ')}</small>`;
+    }
+}
+
+function getSelectedExchanges() {
+    const exchangeCheckboxes = document.querySelectorAll(".exchange-checkbox:checked");
+    return Array.from(exchangeCheckboxes).map(cb => cb.value);
+}
+
+// === ENHANCED PREDICTION FUNCTIONS - FIXED VERSION ===
+async function runMultiTimeframeAnalysis() {
+    const symbol = document.getElementById("predictionSymbol").value.trim().toUpperCase().replace(/[-_]/g, '/');
+    const primaryTimeframe = document.getElementById("primaryTimeframe").value;
+    const depth = parseInt(document.getElementById("analysisDepth").value);
+    
+    if (!symbol) {
+        alert("Please enter a symbol");
+        return;
+    }
+    
+    // Update chart
+    updateTradingViewChart(symbol);
+    
+    // Show loading state
+    const mainSignal = document.getElementById("mainPredictionSignal");
+    if (mainSignal) {
+        mainSignal.innerHTML = `
+            <div class="text-center">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p class="mt-2 mb-0">Analyzing ${symbol}...</p>
+            </div>
+        `;
+    }
+    
+    try {
+        // Fetch multi-timeframe analysis
+        const res = await fetch(API + "/multi_timeframe_analysis", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                symbol: symbol,
+                timeframes: ["1h", "4h", "1d", "1w"],
+                look_back: depth
+            })
+        });
+        
+        const data = await res.json();
+        
+        if (!data.success) {
+            throw new Error(data.error || "Analysis failed");
+        }
+        
+        // Update UI with predictions
+        updatePredictionUI(data);
+        
+        // Store in history - ONLY IF WE HAVE PREDICTIONS
+        if (data.predictions && data.predictions.length > 0) {
+            addToPredictionHistory(symbol, data);
+        }
+        
+    } catch (error) {
+        console.error("Analysis error:", error);
+        const mainSignal = document.getElementById("mainPredictionSignal");
+        if (mainSignal) {
+            mainSignal.innerHTML = `
+                <div class="alert alert-danger">
+                    <strong>Error:</strong> ${error.message}
+                </div>
+            `;
+        }
+    }
+}
+
+function updatePredictionUI(data) {
+    const predictions = data.predictions;
+    const summary = data.summary;
+    
+    // Update main prediction signal
+    const mainSignal = document.getElementById("mainPredictionSignal");
+    if (mainSignal) {
+        // Check if we have predictions
+        if (!predictions || predictions.length === 0) {
+            mainSignal.innerHTML = `
+                <div class="alert alert-warning">
+                    <strong>No prediction data available</strong><br>
+                    Please fetch data for this symbol and train the model first.
+                </div>
+            `;
+        } else {
+            const signalClass = summary.overall_signal.toLowerCase().includes('bull') ? 'signal-strong-bullish' : 
+                               summary.overall_signal.toLowerCase().includes('bear') ? 'signal-bearish' : 'signal-neutral';
+            
+            mainSignal.innerHTML = `
+                <h3 class="mb-2 ${signalClass}">${summary.overall_signal}</h3>
+                <p class="mb-1">Overall Trend: <span id="overallTrend">${summary.trend_direction}</span></p>
+                <p class="mb-1">Confidence: <span id="overallConfidence" class="${getConfidenceClass(summary.confidence)}">${summary.confidence}%</span></p>
+                <p class="mb-0">Recommended Action: <span id="recommendedAction">${summary.recommended_action}</span></p>
+            `;
+        }
+    }
+    
+    // If there are no predictions, clear the table and return
+    if (!predictions || predictions.length === 0) {
+        const tbody = document.getElementById("timeframeAnalysisBody");
+        if (tbody) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="9" class="text-center text-muted">
+                        No prediction data available. Please fetch data and train the model for this symbol.
+                    </td>
+                </tr>
+            `;
+        }
+        // Also clear the 1h and 4h prediction cards
+        document.getElementById("pred1hChange").textContent = "-";
+        document.getElementById("pred1hSignal").textContent = "Signal: -";
+        document.getElementById("pred4hChange").textContent = "-";
+        document.getElementById("pred4hSignal").textContent = "Signal: -";
+        return;
+    }
+    
+    // Update timeframe predictions
+    const timeframeMap = {
+        '1h': { change: 'pred1hChange', signal: 'pred1hSignal' },
+        '4h': { change: 'pred4hChange', signal: 'pred4hSignal' }
+    };
+    
+    predictions.forEach(pred => {
+        const elements = timeframeMap[pred.timeframe];
+        if (elements && elements.change) {
+            const changeElement = document.getElementById(elements.change);
+            const signalElement = document.getElementById(elements.signal);
+            
+            if (changeElement) {
+                const changeValue = parseFloat(pred.predicted_change);
+                const changeClass = changeValue >= 0 ? 'text-success' : 'text-danger';
+                changeElement.innerHTML = `<span class="${changeClass}">${changeValue >= 0 ? '+' : ''}${changeValue.toFixed(2)}%</span>`;
+            }
+            
+            if (signalElement) {
+                signalElement.textContent = `Signal: ${pred.signal}`;
+            }
+        }
+    });
+    
+    // Update technical summary - SAFE CHECK
+    const rsiStatusElem = document.getElementById("rsiStatus");
+    const macdStatusElem = document.getElementById("macdStatus");
+    const trendStatusElem = document.getElementById("trendStatus");
+    const supportLevelElem = document.getElementById("supportLevel");
+    const resistanceLevelElem = document.getElementById("resistanceLevel");
+    const volatilityStatusElem = document.getElementById("volatilityStatus");
+    
+    if (rsiStatusElem) rsiStatusElem.innerHTML = getRSIStatus(summary.rsi);
+    if (macdStatusElem) macdStatusElem.innerHTML = getMACDStatus(summary.macd);
+    if (trendStatusElem) trendStatusElem.textContent = summary.trend_direction;
+    if (supportLevelElem) supportLevelElem.textContent = formatPrice(summary.support_levels && summary.support_levels[0]);
+    if (resistanceLevelElem) resistanceLevelElem.textContent = formatPrice(summary.resistance_levels && summary.resistance_levels[0]);
+    if (volatilityStatusElem) volatilityStatusElem.textContent = summary.volatility || 'Low';
+    
+    // Update key levels - SAFE CHECK
+    const immediateSupportElem = document.getElementById("immediateSupport");
+    const immediateResistanceElem = document.getElementById("immediateResistance");
+    const stopLossZoneElem = document.getElementById("stopLossZone");
+    
+    if (immediateSupportElem) immediateSupportElem.textContent = formatPrice(summary.support_levels && summary.support_levels[0]);
+    if (immediateResistanceElem) immediateResistanceElem.textContent = formatPrice(summary.resistance_levels && summary.resistance_levels[0]);
+    if (stopLossZoneElem) stopLossZoneElem.textContent = formatPrice(summary.stop_loss_level);
+    
+    // Update detailed timeframe analysis table
+    updateTimeframeAnalysisTable(predictions);
+}
+
+function getConfidenceClass(confidence) {
+    if (confidence >= 80) return 'prediction-high';
+    if (confidence >= 60) return 'prediction-medium';
+    return 'prediction-low';
+}
+
+function getRSIStatus(rsi) {
+    if (!rsi) return '<span class="text-muted">N/A</span>';
+    if (rsi < 30) return `<span class="text-success">${rsi.toFixed(1)} (Oversold)</span>`;
+    if (rsi > 70) return `<span class="text-danger">${rsi.toFixed(1)} (Overbought)</span>`;
+    if (rsi > 50) return `<span class="text-success">${rsi.toFixed(1)} (Bullish)</span>`;
+    return `<span class="text-danger">${rsi.toFixed(1)} (Bearish)</span>`;
+}
+
+function getMACDStatus(macdData) {
+    if (!macdData || !macdData.macd || !macdData.signal) return '<span class="text-muted">N/A</span>';
+    
+    const macd = parseFloat(macdData.macd);
+    const signal = parseFloat(macdData.signal);
+    
+    if (macd > signal && macd > 0) return `<span class="text-success">Bullish</span>`;
+    if (macd < signal && macd < 0) return `<span class="text-danger">Bearish</span>`;
+    if (macd > signal) return `<span class="text-warning">Weak Bullish</span>`;
+    return `<span class="text-warning">Weak Bearish</span>`;
+}
+
+function formatPrice(price) {
+    if (!price) return 'N/A';
+    const numPrice = parseFloat(price);
+    if (numPrice < 1) {
+        return numPrice.toFixed(6);
+    } else if (numPrice < 1000) {
+        return numPrice.toFixed(2);
+    } else {
+        return numPrice.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    }
+}
+
+function updateTimeframeAnalysisTable(predictions) {
+    const tbody = document.getElementById("timeframeAnalysisBody");
+    if (!tbody) return;
+    
+    tbody.innerHTML = '';
+    
+    predictions.forEach(pred => {
+        const change = parseFloat(pred.predicted_change);
+        const signalClass = pred.signal.toLowerCase().includes('bull') ? 'signal-bullish' : 
+                          pred.signal.toLowerCase().includes('bear') ? 'signal-bearish' : 'signal-neutral';
+        
+        const row = document.createElement("tr");
+        row.innerHTML = `
+            <td><strong>${pred.timeframe}</strong></td>
+            <td class="${change >= 0 ? 'text-success' : 'text-danger'} fw-bold">
+                ${change >= 0 ? '+' : ''}${change.toFixed(2)}%
+            </td>
+            <td><span class="${signalClass}">${pred.signal}</span></td>
+            <td>
+                <div class="progress" style="height: 20px;">
+                    <div class="progress-bar ${getConfidenceClass(pred.confidence).replace('prediction-', 'bg-')}" 
+                         role="progressbar" 
+                         style="width: ${pred.confidence}%"
+                         aria-valuenow="${pred.confidence}" 
+                         aria-valuemin="0" 
+                         aria-valuemax="100">
+                        ${pred.confidence}%
+                    </div>
+                </div>
+            </td>
+            <td>${pred.rsi ? pred.rsi.toFixed(1) : 'N/A'}</td>
+            <td>${pred.macd_status || 'N/A'}</td>
+            <td>${formatPrice(pred.support)}</td>
+            <td>${formatPrice(pred.resistance)}</td>
+            <td><strong>${pred.recommendation}</strong></td>
+        `;
+        tbody.appendChild(row);
+    });
+}
+
+// FIXED FUNCTION: addToPredictionHistory - now checks if mainPrediction exists
+function addToPredictionHistory(symbol, data) {
+    const tbody = document.getElementById("predictionHistoryBody");
+    if (!tbody) return;
+    
+    // Check if we have predictions
+    if (!data.predictions || data.predictions.length === 0) {
+        console.warn('No predictions to add to history');
+        return;
+    }
+    
+    const now = new Date();
+    const timeString = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    
+    // Get the main prediction (4h or first) - FIXED: Check if prediction exists
+    let mainPrediction = data.predictions.find(p => p.timeframe === '4h');
+    if (!mainPrediction && data.predictions.length > 0) {
+        mainPrediction = data.predictions[0];
+    }
+    
+    // If still no mainPrediction, return
+    if (!mainPrediction) {
+        console.warn('No valid prediction found for history');
+        return;
+    }
+    
+    // Now we can safely access mainPrediction properties
+    const row = document.createElement("tr");
+    const predictedChange = parseFloat(mainPrediction.predicted_change) || 0;
+    const signalText = mainPrediction.signal || "NEUTRAL";
+    
+    row.innerHTML = `
+        <td>${timeString}</td>
+        <td>${symbol}</td>
+        <td>${mainPrediction.timeframe || 'N/A'}</td>
+        <td class="${predictedChange >= 0 ? 'text-success' : 'text-danger'}">
+            ${predictedChange >= 0 ? '+' : ''}${predictedChange.toFixed(2)}%
+        </td>
+        <td>-</td>
+        <td>-</td>
+        <td><span class="${signalText.toLowerCase().includes('bull') ? 'signal-bullish' : signalText.toLowerCase().includes('bear') ? 'signal-bearish' : 'signal-neutral'}">
+            ${signalText}
+        </span></td>
+    `;
+    
+    // Insert at top
+    if (tbody.firstChild && tbody.firstChild.textContent.includes('No prediction history')) {
+        tbody.innerHTML = '';
+    }
+    tbody.insertBefore(row, tbody.firstChild);
+    
+    // Keep only last 10 entries
+    const rows = tbody.getElementsByTagName('tr');
+    if (rows.length > 10) {
+        tbody.removeChild(rows[rows.length - 1]);
+    }
+}
+
+// TradingView Chart
+function updateTradingViewChart(symbol) {
+    if (typeof TradingView === 'undefined') {
+        console.error("TradingView library not loaded");
+        return;
+    }
+    
+    // Clean symbol for TradingView
+    const cleanSymbol = symbol.replace('/', '').replace('USDT', 'USD');
+    
+    // Clear existing chart
+    const chartContainer = document.getElementById("tradingview_chart");
+    if (chartContainer) {
+        chartContainer.innerHTML = '';
+    }
+    
+    try {
+        new TradingView.widget({
+            "container_id": "tradingview_chart",
+            "width": "100%",
+            "height": "400",
+            "symbol": `BINANCE:${cleanSymbol}`,
+            "interval": "60",
+            "timezone": "Etc/UTC",
+            "theme": "dark",
+            "style": "1",
+            "locale": "en",
+            "toolbar_bg": "#f1f3f6",
+            "enable_publishing": false,
+            "withdateranges": true,
+            "hide_side_toolbar": false,
+            "allow_symbol_change": true,
+            "details": true,
+            "studies": [
+                "RSI@tv-basicstudies",
+                "MACD@tv-basicstudies",
+                "Volume@tv-basicstudies"
+            ],
+            "show_popup_button": true,
+            "popup_width": "1000",
+            "popup_height": "650"
+        });
+    } catch (error) {
+        console.error("TradingView chart error:", error);
+    }
+}
+
+// Auto-update predictions when tab is active
+let predictionInterval = null;
+
+document.querySelector('#mainTabs a[href="#predictions"]').addEventListener('shown.bs.tab', function() {
+    // Run initial analysis
+    setTimeout(runMultiTimeframeAnalysis, 500);
+    
+    // Set up auto-refresh every 30 seconds
+    if (predictionInterval) clearInterval(predictionInterval);
+    predictionInterval = setInterval(runMultiTimeframeAnalysis, 30000);
+});
+
+document.querySelector('#mainTabs a[href="#predictions"]').addEventListener('hide.bs.tab', function() {
+    // Clear interval when leaving tab
+    if (predictionInterval) {
+        clearInterval(predictionInterval);
+        predictionInterval = null;
+    }
+});
+
+// Initialize TradingView on page load
+document.addEventListener("DOMContentLoaded", function() {
+    // Load TradingView chart after a delay
+    setTimeout(() => {
+        updateTradingViewChart("BTC/USDT");
+    }, 2000);
+});
+
+// Auto-refresh predictions when symbol changes
+document.getElementById("predictionSymbol").addEventListener("change", function() {
+    if (document.querySelector('#predictions').classList.contains('active')) {
+        runMultiTimeframeAnalysis();
+    }
+});
+
+// Auto-refresh when primary timeframe changes
+document.getElementById("primaryTimeframe").addEventListener("change", function() {
+    if (document.querySelector('#predictions').classList.contains('active')) {
+        runMultiTimeframeAnalysis();
+    }
+});
+
+// Load prediction history on tab open
+document.querySelector('#mainTabs a[href="#predictions"]').addEventListener('shown.bs.tab', async function() {
+    // Load prediction history
+    try {
+        const symbol = document.getElementById("predictionSymbol").value.trim();
+        const res = await fetch(`${API}/get_prediction_history?symbol=${encodeURIComponent(symbol)}&limit=10`);
+        const data = await res.json();
+        
+        if (data.success && data.predictions && data.predictions.length > 0) {
+            const tbody = document.getElementById("predictionHistoryBody");
+            if (!tbody) return;
+            
+            tbody.innerHTML = '';
+            
+            data.predictions.forEach(pred => {
+                const date = new Date(pred.created_at);
+                const timeString = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                
+                const row = document.createElement("tr");
+                row.innerHTML = `
+                    <td>${timeString}</td>
+                    <td>${pred.symbol}</td>
+                    <td>${pred.timeframe}</td>
+                    <td class="${parseFloat(pred.predicted_change) >= 0 ? 'text-success' : 'text-danger'}">
+                        ${parseFloat(pred.predicted_change) >= 0 ? '+' : ''}${parseFloat(pred.predicted_change).toFixed(2)}%
+                    </td>
+                    <td>${pred.actual_change !== null ? (parseFloat(pred.actual_change) >= 0 ? '+' : '') + parseFloat(pred.actual_change).toFixed(2) + '%' : '-'}</td>
+                    <td>${pred.accuracy !== null ? pred.accuracy.toFixed(1) + '%' : '-'}</td>
+                    <td><span class="${pred.signal.toLowerCase().includes('bull') ? 'signal-bullish' : pred.signal.toLowerCase().includes('bear') ? 'signal-bearish' : 'signal-neutral'}">
+                        ${pred.signal}
+                    </span></td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+    } catch (error) {
+        console.log("Could not load prediction history:", error);
+    }
+});
+
+// === REAL-TIME FEATURES ===
+async function setLiveSymbol() {
+    const symbolInput = document.getElementById("liveSymbol").value.trim().toUpperCase();
+    if (!symbolInput) {
+        document.getElementById("liveSymbolStatus").innerHTML = '<span class="text-danger">Enter a symbol!</span>';
+        return;
+    }
+    try {
+        const res = await fetch(API + "/set_symbol", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ symbol: symbolInput })
+        });
+        const json = await res.json();
+        if (json.success) {
+            document.getElementById("liveSymbolStatus").innerHTML = `<span class="text-success">✓ Now tracking: ${symbolInput}</span>`;
+        } else {
+            document.getElementById("liveSymbolStatus").innerHTML = '<span class="text-danger">Failed to set symbol</span>';
+        }
+    } catch (e) {
+        document.getElementById("liveSymbolStatus").innerHTML = '<span class="text-danger">Connection error</span>';
+    }
+}
+
+async function updateRealTime() {
+    try {
+        const res = await fetch(API + "/realtime_data");
+        const data = await res.json();
+
+        const activeTab = document.querySelector('.tab-pane.active').id;
+
+        // Order Book Tab
+        if (activeTab === "orderbook") {
+            const selectedExchanges = getSelectedExchanges();
+            const depthLevels = parseInt(document.getElementById("depthLevels").value);
+            
+            if (selectedExchanges.length === 0) {
+                document.getElementById("orderBookContent").innerHTML = `
+                    <div class="alert alert-warning">
+                        <strong>No exchanges selected!</strong> Please select at least one exchange to view the order book.
+                    </div>`;
+                return;
+            }
+
+            let bids_list, asks_list, total_buy, total_sell, imbalance, current_price, vwap, predicted;
+            let last_update = data.last_update;
+            let now = Date.now() / 1000;
+
+            // Combine order books from selected exchanges
+            let combined_bids = {};
+            let combined_asks = {};
+            let exchange_count = 0;
+            
+            for (let ex of selectedExchanges) {
+                if (data.order_book && data.order_book[ex]) {
+                    exchange_count++;
+                    data.order_book[ex].bids.forEach(([p, q]) => {
+                        combined_bids[p] = (combined_bids[p] || 0) + q;
+                    });
+                    data.order_book[ex].asks.forEach(([p, q]) => {
+                        combined_asks[p] = (combined_asks[p] || 0) + q;
+                    });
+                }
+            }
+            
+            if (exchange_count === 0) {
+                document.getElementById("orderBookContent").innerHTML = `
+                    <div class="alert alert-info">
+                        <strong>No order book data available</strong> for selected exchanges. Please try again in a few seconds.
+                    </div>`;
+                return;
+            }
+
+            bids_list = Object.entries(combined_bids)
+                .sort((a, b) => b[0] - a[0])
+                .slice(0, depthLevels);
+            asks_list = Object.entries(combined_asks)
+                .sort((a, b) => a[0] - b[0])
+                .slice(0, depthLevels);
+
+            total_buy = bids_list.reduce((sum, [p, q]) => sum + q, 0);
+            total_sell = asks_list.reduce((sum, [p, q]) => sum + q, 0);
+            let total = total_buy + total_sell + 1e-8;
+            imbalance = (total_buy - total_sell) / total;
+            
+            // Filter trades by selected exchanges
+            let recent_trades = data.trades.filter(t => {
+                return now - t[2] < 300 && selectedExchanges.includes(t[4]);
+            });
+            
+            if (recent_trades.length > 0) {
+                let vwap_sum = recent_trades.reduce((sum, t) => sum + t[0] * t[1], 0);
+                let vol_sum = recent_trades.reduce((sum, t) => sum + t[1], 0);
+                vwap = vol_sum > 0 ? vwap_sum / vol_sum : null;
+                current_price = recent_trades[recent_trades.length - 1][0];
+            } else {
+                vwap = null;
+                current_price = 0;
+            }
+            
+            predicted = current_price * (1 + 0.005 * imbalance);
+
+            let imbalancePct = (imbalance * 100).toFixed(2);
+            let imbalanceClass = imbalance > 0 ? "imbalance-pos" : "imbalance-neg";
+            let lastUpdate = new Date(last_update * 1000).toLocaleTimeString();
+
+            let summaryHtml = `
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <strong>Symbol:</strong> ${data.current_symbol}<br>
+                        <strong>Last Update:</strong> ${lastUpdate}<br>
+                        <strong>Current Price:</strong> ${current_price ? current_price.toFixed(6) : 'N/A'} USDT<br>
+                        <strong>Exchanges:</strong> ${selectedExchanges.map(e => {
+                            const namesMap = {
+                                'binance': 'Binance',
+                                'bybit': 'Bybit',
+                                'okx': 'OKX',
+                                'gateio': 'Gate.io',
+                                'kucoin': 'KuCoin',
+                                'huobi': 'Huobi',
+                                'kraken': 'Kraken',
+                                'bitget': 'Bitget',
+                                'mexc': 'MEXC',
+                                'coinbase': 'Coinbase'
+                            };
+                            return namesMap[e] || e.charAt(0).toUpperCase() + e.slice(1);
+                        }).join(', ')}
+                    </div>
+                    <div class="col-md-6 text-end">
+                        <strong>Buy Volume:</strong> ${total_buy.toFixed(2)}<br>
+                        <strong>Sell Volume:</strong> ${total_sell.toFixed(2)}<br>
+                        <strong>Depth Levels:</strong> ${depthLevels}<br>
+                        <strong class="${imbalanceClass}">Imbalance: ${imbalancePct}%</strong>
+                    </div>
+                </div>
+                <hr>
+                <div class="row mb-3">
+                    <div class="col"><strong>VWAP:</strong> ${vwap ? vwap.toFixed(6) : 'Calculating...'} USDT</div>
+                    <div class="col text-end"><strong>Predicted Price:</strong> <span class="fs-5 fw-bold">${predicted.toFixed(6)}</span> USDT</div>
+                </div>
+            `;
+
+            let bookHtml = `
+                <div class="row">
+                    <div class="col-md-6">
+                        <h5>Asks (Sells) <span class="badge bg-danger">${asks_list.length} levels</span></h5>
+                        <table class="table table-sm table-hover">
+                            <thead class="table-danger"><tr><th>Price</th><th>Quantity</th><th>Total</th></tr></thead>
+                            <tbody>
+                                ${asks_list.map(([p, q], i) => {
+                                    let cumulative = asks_list.slice(0, i + 1).reduce((sum, [_, qty]) => sum + qty, 0);
+                                    return `<tr><td>${parseFloat(p).toFixed(6)}</td><td>${parseFloat(q).toFixed(2)}</td><td>${cumulative.toFixed(2)}</td></tr>`;
+                                }).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="col-md-6">
+                        <h5>Bids (Buys) <span class="badge bg-success">${bids_list.length} levels</span></h5>
+                        <table class="table table-sm table-hover">
+                            <thead class="table-success"><tr><th>Price</th><th>Quantity</th><th>Total</th></tr></thead>
+                            <tbody>
+                                ${bids_list.map(([p, q], i) => {
+                                    let cumulative = bids_list.slice(0, i + 1).reduce((sum, [_, qty]) => sum + qty, 0);
+                                    return `<tr><td>${parseFloat(p).toFixed(6)}</td><td>${parseFloat(q).toFixed(2)}</td><td>${cumulative.toFixed(2)}</td></tr>`;
+                                }).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+
+            document.getElementById("orderBookContent").innerHTML = summaryHtml + bookHtml;
+        }
+
+        // Trades Tab - Show trades from selected exchanges
+        if (activeTab === "trades") {
+            const selectedExchanges = getSelectedExchanges();
+            let tradesHtml = `
+                <div class="mb-3">
+                    <span class="badge bg-info">Filtering trades from: ${selectedExchanges.map(e => {
+                        const namesMap = {
+                            'binance': 'Binance',
+                            'bybit': 'Bybit',
+                            'okx': 'OKX',
+                            'gateio': 'Gate.io',
+                            'kucoin': 'KuCoin',
+                            'huobi': 'Huobi',
+                            'kraken': 'Kraken',
+                            'bitget': 'Bitget',
+                            'mexc': 'MEXC',
+                            'coinbase': 'Coinbase'
+                        };
+                        return namesMap[e] || e.charAt(0).toUpperCase() + e.slice(1);
+                    }).join(', ')}</span>
+                </div>
+                <table class="table table-sm table-hover">
+                    <thead class="table-dark">
+                        <tr><th>Time</th><th>Price</th><th>Volume</th><th>Side</th><th>Exchange</th></tr>
+                    </thead>
+                    <tbody>`;
+            
+            let filteredTrades = data.trades.filter(t => selectedExchanges.includes(t[4]));
+            
+            if (filteredTrades.length === 0) {
+                tradesHtml += `<tr><td colspan="5" class="text-center text-muted">No trades from selected exchanges</td></tr>`;
+            } else {
+                filteredTrades.slice(-100).reverse().forEach(t => {
+                    const side = t[3] === 'b' ? 'BUY' : 'SELL';
+                    const color = t[3] === 'b' ? 'text-success' : 'text-danger';
+                    const timeStr = new Date(t[2] * 1000).toLocaleTimeString();
+                    const exchangeName = {
+                        'binance': 'Binance',
+                        'bybit': 'Bybit',
+                        'okx': 'OKX',
+                        'gateio': 'Gate.io',
+                        'kucoin': 'KuCoin',
+                        'huobi': 'Huobi',
+                        'kraken': 'Kraken',
+                        'bitget': 'Bitget',
+                        'mexc': 'MEXC',
+                        'coinbase': 'Coinbase'
+                    }[t[4]] || t[4];
+                    tradesHtml += `<tr><td>${timeStr}</td><td>${t[0].toFixed(6)}</td><td>${t[1].toFixed(2)}</td><td class="${color}"><strong>${side}</strong></td><td>${exchangeName}</td></tr>`;
+                });
+            }
+            tradesHtml += `</tbody></table>`;
+            document.getElementById("tradesContent").innerHTML = tradesHtml;
+        }
+
+    } catch (e) {
+        console.error("Real-time update failed:", e);
+        if (document.querySelector('.tab-pane.active').id === "orderbook") {
+            document.getElementById("orderBookContent").innerHTML = `
+                <div class="alert alert-danger">
+                    <strong>Connection Error:</strong> Unable to fetch real-time data. Please check your connection.
+                </div>`;
+        }
+    }
+}
+
+// Auto-refresh on live tabs
+setInterval(() => {
+    const active = document.querySelector('.tab-pane.active');
+    if (active && ['orderbook', 'trades'].includes(active.id)) {
+        updateRealTime();
+    }
+}, 2000);
+
+// Trigger initial load when switching to live tabs
+['orderbook', 'trades'].forEach(tabId => {
+    document.querySelector(`#mainTabs a[href="#${tabId}"]`).addEventListener('shown.bs.tab', updateRealTime);
+});
+
+// === ALL YOUR ORIGINAL FUNCTIONS (unchanged) ===
+async function fetchOHLCV() {
+    const symbol = document.getElementById("symbol").value.trim();
+    const timeframe = document.getElementById("timeframe").value;
+    const fromYear = document.getElementById("fromYear").value;
+    const toYear = document.getElementById("toYear").value;
+    showAlert("ohlcvAlert", "Fetching from Binance...", "info");
+    try {
+        const res = await fetch(API + "/fetch_data", {
+            method:"POST",
+            headers:{"Content-Type":"application/json"},
+            body: JSON.stringify({symbol, timeframe, from_year: fromYear, to_year: toYear})
+        });
+        const json = await res.json();
+        if (json.success) {
+            showAlert("ohlcvAlert", json.message, "success");
+            displayOHLCV(json.data);
+        } else {
+            showAlert("ohlcvAlert", json.error || "Failed");
+        }
+    } catch(e) {
+        showAlert("ohlcvAlert", "Error: "+e.message);
+    }
+}
+
+async function loadFromDB() {
+    const symbol = document.getElementById("symbol").value.trim().toUpperCase().replace(/[-_]/g, '/');
+    const timeframe = document.getElementById("timeframe").value;
+    const fromYear = document.getElementById("fromYear").value;
+    const toYear = document.getElementById("toYear").value;
+
+    let alertMsg = `Loading from DB: ${symbol} ${timeframe}`;
+    if (fromYear) alertMsg += ` from ${fromYear}`;
+    if (toYear) alertMsg += ` to ${toYear}`;
+    showAlert("ohlcvAlert", alertMsg, "info");
+
+    try {
+        const payload = { symbol, timeframe };
+        if (fromYear) payload.from_year = fromYear;
+        if (toYear) payload.to_year = toYear;
+
+        const res = await fetch(API + "/fetch_from_db", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+        });
+
+        const json = await res.json();
+        if (json.success) {
+            showAlert("ohlcvAlert", `Loaded ${json.data.length} rows from DB`, "success");
+            displayOHLCV(json.data);
+        } else {
+            showAlert("ohlcvAlert", json.error || "No data in database for selected range", "warning");
+        }
+    } catch (e) {
+        showAlert("ohlcvAlert", "Error: " + e.message, "danger");
+    }
+}
+
+function displayOHLCV(rows) {
+    const tbody = document.getElementById("ohlcvBody");
+    tbody.innerHTML = "";
+    // Sort rows descending by time (newest first)
+    rows.sort((a, b) => new Date(b["Time (UTC)"] || b.time_utc) - new Date(a["Time (UTC)"] || a.time_utc));
+    rows.forEach((r, i) => {
+        const previousVol = (i < rows.length - 1) ? Number(rows[i + 1].volume || rows[i + 1].Volume) : null;
+        const currentVol = Number(r.volume || r.Volume);
+        const diff = previousVol !== null ? currentVol - previousVol : null;
+        let volChangeHtml = 'N/A';
+        if (diff !== null) {
+            const className = diff > 0 ? 'positive' : 'negative';
+            const sign = diff > 0 ? '+' : '';
+            volChangeHtml = `<span class="${className}">${sign}${diff.toLocaleString(undefined, {maximumFractionDigits: 2})}</span>`;
+        }
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+            <td>${i+1}</td>
+            <td>${r.time_utc || r["Time (UTC)"]}</td>
+            <td>${Number(r.open || r.Open).toFixed(4)}</td>
+            <td>${Number(r.high || r.High).toFixed(4)}</td>
+            <td>${Number(r.low || r.Low).toFixed(4)}</td>
+            <td>${Number(r.close || r.Close).toFixed(4)}</td>
+            <td>${currentVol.toLocaleString()}</td>
+            <td>${volChangeHtml}</td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+async function analyzeSymbol() {
+    const symbol = document.getElementById("signalSymbol").value.trim();
+    const timeframe = document.getElementById("signalTimeframe").value;
+    if (!symbol) {
+        showAlert("signalAlert", "Please enter a symbol");
+        return;
+    }
+    showAlert("signalAlert", `Analyzing ${symbol} ${timeframe}...`, "info");
+    try {
+        const res = await fetch(API + "/analyze_symbol", {
+            method:"POST",
+            headers:{"Content-Type":"application/json"},
+            body: JSON.stringify({symbol, timeframe})
+        });
+        const json = await res.json();
+        if (!json.success) {
+            showAlert("signalAlert", json.error || "Failed");
+            return;
+        }
+        let cls = "signal-bullish";
+        if (json.signal.startsWith("BEARISH")) cls = "signal-bearish";
+        if (json.signal.startsWith("WATCH_")) cls = "signal-watch";
+        const d = json;
+        const ind = d.indicators;
+        const c = d.last_candle;
+        const html = `
+            <p><strong>Symbol:</strong> ${d.symbol} &nbsp; <strong>Timeframe:</strong> ${d.timeframe}</p>
+            <p><strong>Last Candle:</strong> ${c.time_utc} |
+               O: ${c.open.toFixed(4)} H: ${c.high.toFixed(4)}
+               L: ${c.low.toFixed(4)} C: ${c.close.toFixed(4)}
+               Vol: ${c.volume.toLocaleString()}</p>
+            <p><strong>RSI(14):</strong> ${ind.rsi ? ind.rsi.toFixed(2) : "n/a"} &nbsp;
+               <strong>MACD:</strong> ${ind.macd ? ind.macd.toFixed(4) : "n/a"} &nbsp;
+               <strong>Signal:</strong> ${ind.macd_signal ? ind.macd_signal.toFixed(4) : "n/a"}</p>
+            <p><strong>EMA20:</strong> ${ind.ema20 ? ind.ema20.toFixed(4) : "n/a"} &nbsp;
+               <strong>EMA50:</strong> ${ind.ema50 ? ind.ema50.toFixed(4) : "n/a"} &nbsp;
+               <strong>EMA100:</strong> ${ind.ema100 ? ind.ema100.toFixed(4) : "n/a"} &nbsp;
+               <strong>EMA200:</strong> ${ind.ema200 ? ind.ema200.toFixed(4) : "n/a"}</p>
+            <p class="${cls}"><strong>Signal:</strong> ${d.signal} (score ${d.score})</p>
+            <ul>${d.reasons.map(r => `<li>${r}</li>`).join("")}</ul>
+        `;
+        document.getElementById("signalDetails").innerHTML = html;
+        showAlert("signalAlert", "Analysis completed", "success");
+    } catch(e) {
+        showAlert("signalAlert", "Error: "+e.message);
+    }
+}
+
+async function refreshGainersLosers() {
+    showAlert("gainersAlert", "Fetching from Binance...", "info");
+    showAlert("losersAlert", "Fetching from Binance...", "info");
+    try {
+        const res = await fetch(API + "/fetch_gainers_losers");
+        const json = await res.json();
+        if (json.success) {
+            showAlert("gainersAlert", json.message, "success");
+            showAlert("losersAlert", json.message, "success");
+            loadGainers();
+            loadLosers();
+        } else {
+            showAlert("gainersAlert", json.error || "Failed");
+            showAlert("losersAlert", json.error || "Failed");
+        }
+    } catch(e) {
+        showAlert("gainersAlert", "Error: "+e.message);
+        showAlert("losersAlert", "Error: "+e.message);
+    }
+}
+
+
+async function loadGainers() {
+    const res = await fetch(API + "/get_gainers");
+    const json = await res.json();
+    const tbody = document.getElementById("gainersBody");
+    tbody.innerHTML = "";
+    json.data.forEach((d, i) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+            <td>${i+1}</td>
+            <td><strong>${d.symbol}</strong></td>
+            <td>$${Number(d.price).toFixed(6)}</td>
+            <td class="positive">+${d.price_change_percent.toFixed(2)}%</td>
+            <td>$${Number(d.volume_24h).toLocaleString()}</td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+async function loadLosers() {
+    const res = await fetch(API + "/get_losers");
+    const json = await res.json();
+    const tbody = document.getElementById("losersBody");
+    tbody.innerHTML = "";
+    json.data.forEach((d, i) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+            <td>${i+1}</td>
+            <td><strong>${d.symbol}</strong></td>
+            <td>$${Number(d.price).toFixed(6)}</td>
+            <td class="negative">${d.price_change_percent.toFixed(2)}%</td>
+            <td>$${Number(d.volume_24h).toLocaleString()}</td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+async function loadGainerSignals() {
+    showAlert("gainerSignalsAlert", "Scanning gainers with full indicators...", "info");
+    const tbody = document.getElementById("gainerSignalsBody");
+    tbody.innerHTML = "";
+    try {
+        const res = await fetch(API + "/gainers_signals");
+        const json = await res.json();
+        if (!json.success) {
+            showAlert("gainerSignalsAlert", "Search failed");
+            return;
+        }
+        json.data.forEach((d, i) => {
+            let cls = "signal-bullish";
+            if (d.signal.startsWith("STRONG_BEARISH") || d.signal.startsWith("BEARISH")) cls = "signal-bearish";
+            if (d.signal.startsWith("WATCH_")) cls = "signal-watch";
+            const tr = document.createElement("tr");
+            tr.innerHTML = `
+                <td>${i+1}</td>
+                <td><strong>${d.symbol}</strong></td>
+                <td class="${d.price_change_percent >= 0 ? "positive" : "negative"}">
+                    ${d.price_change_percent.toFixed(2)}%
+                </td>
+                <td>$${Number(d.volume_24h).toLocaleString()}</td>
+                <td>${d.close.toFixed(6)}</td>
+                <td>${d.rsi ? d.rsi.toFixed(2) : "n/a"}</td>
+                <td class="${cls}">${d.signal}</td>
+                <td>${d.score}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+        showAlert("gainerSignalsAlert", "Gainer signals ready", "success");
+    } catch(e) {
+        showAlert("gainerSignalsAlert", "Error: "+e.message);
+    }
+}
+
+async function loadRotation() {
+    showAlert("rotationAlert", "Scanning rotation opportunities...", "info");
+    const container = document.getElementById("rotationResults");
+    container.innerHTML = "";
+    try {
+        const res = await fetch(API + "/rotation_signals");
+        const json = await res.json();
+        if (!json.success) {
+            showAlert("rotationAlert", json.error || "Failed");
+            return;
+        }
+        const data = json.data;
+        if (!data.length) {
+            showAlert("rotationAlert", "No rotation candidates found.", "warning");
+            return;
+        }
+        data.forEach((block, idx) => {
+            const div = document.createElement("div");
+            div.className = "card mb-3";
+            let html = `
+                <div class="card-header">
+                    Pumped: <strong>${block.pumped_symbol}</strong>
+                    (Cat: ${block.pumped_category}) – ${block.pumped_change_pct.toFixed(2)}%,
+                    Vol: $${Number(block.pumped_volume).toLocaleString()}
+                </div>
+                <div class="card-body">
+                    <table class="table table-sm table-bordered">
+                        <thead class="table-info">
+                            <tr>
+                                <th>#</th><th>Symbol</th><th>Score</th><th>Label</th><th>RSI</th><th>24h %</th><th>Vol</th><th>Close</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+            block.rotation_candidates.forEach((c, i) => {
+                let cls = "signal-bullish";
+                if (c.label.startsWith("STRONG_BEARISH") || c.label.startsWith("BEARISH")) cls = "signal-bearish";
+                if (c.label.startsWith("WATCH_")) cls = "signal-watch";
+                html += `
+                    <tr>
+                        <td>${i+1}</td>
+                        <td><strong>${c.symbol}</strong></td>
+                        <td>${c.score}</td>
+                        <td class="${cls}">${c.label}</td>
+                        <td>${c.rsi ? c.rsi.toFixed(2) : "n/a"}</td>
+                        <td>${c.today_change_pct.toFixed(2)}%</td>
+                        <td>$${Number(c.today_volume).toLocaleString()}</td>
+                        <td>${c.close.toFixed(6)}</td>
+                    </tr>
+                `;
+            });
+            html += `</tbody></table></div>`;
+            div.innerHTML = html;
+            container.appendChild(div);
+        });
+        showAlert("rotationAlert", "Rotation candidates ready.", "success");
+    } catch(e) {
+        showAlert("rotationAlert", "Error: "+e.message);
+    }
+}
+
+async function trainBot() {
+    const symbol = document.getElementById("trainSymbol").value.trim().toUpperCase().replace(/[-_]/g, '/');
+    const timeframes = Array.from(document.getElementById("trainTimeframes").selectedOptions).map(opt => opt.value);
+    const lookBack = parseInt(document.getElementById("trainLookBack").value);
+    
+    if (!symbol || timeframes.length === 0) {
+        showAlert("trainAlert", "Select symbol and at least one timeframe", "danger");
+        return;
+    }
+    
+    showAlert("trainAlert", "Training model...", "info");
+    try {
+        const res = await fetch(API + "/train_bot", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ symbol, timeframes, look_back: lookBack })
+        });
+        const json = await res.json();
+        if (json.success) {
+            showAlert("trainAlert", json.message, "success");
+        } else {
+            showAlert("trainAlert", json.error, "danger");
+        }
+    } catch (e) {
+        showAlert("trainAlert", "Error: " + e.message, "danger");
+    }
+}
+
+async function predictCandle() {
+    const symbol = document.getElementById("predictSymbol").value.trim().toUpperCase().replace(/[-_]/g, '/');
+    const timeframe = document.getElementById("predictTimeframe").value;
+    const lookBack = parseInt(document.getElementById("predictLookBack").value);
+    const expander = parseFloat(document.getElementById("predictExpander").value);
+    
+    if (!symbol) {
+        showAlert("predictAlert", "Select symbol", "danger");
+        return;
+    }
+    
+    showAlert("predictAlert", "Predicting next candle...", "info");
+    try {
+        const res = await fetch(API + "/predict_candle", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ symbol, timeframe, look_back: lookBack, expander })
+        });
+        const json = await res.json();
+        if (json.success) {
+            showAlert("predictAlert", "Prediction ready", "success");
+            displayPrediction(json.prediction);
+        } else {
+            showAlert("predictAlert", json.error, "danger");
+        }
+    } catch (e) {
+        showAlert("predictAlert", "Error: " + e.message, "danger");
+    }
+}
+
+function displayPrediction(pred) {
+    const container = document.getElementById("predictResults");
+    container.innerHTML = `
+        <h5>Predicted Next Candle (Confidence: ${pred.confidence.toFixed(2)}%)</h5>
+        <p><strong>% Close Change:</strong> ${pred.pct_close.toFixed(2)}% (Bounds: ${pred.close_low.toFixed(2)}% to ${pred.close_high.toFixed(2)}%)</p>
+        <p><strong>% High Change:</strong> ${pred.pct_high.toFixed(2)}% (Bounds: ${pred.high_low.toFixed(2)}% to ${pred.high_high.toFixed(2)}%)</p>
+        <p><strong>% Low Change:</strong> ${pred.pct_low.toFixed(2)}% (Bounds: ${pred.low_low.toFixed(2)}% to ${pred.low_high.toFixed(2)}%)</p>
+        <small>Based on ${pred.matches} historical matches.</small>
+    `;
+}
+
+async function syncBinanceSymbols() {
+    showAlert("symbolSyncAlert", "Syncing Binance symbols...", "info");
+    try {
+        const res = await fetch(API + "/sync_binance_symbols", { method: "POST" });
+        const json = await res.json();
+        if (!json.success) {
+            showAlert("symbolSyncAlert", json.error || "Sync failed");
+            return;
+        }
+        document.getElementById("syncTotal").innerText = json.total_markets;
+        document.getElementById("syncExisting").innerText = json.already_existing;
+        document.getElementById("syncNew").innerText = json.newly_added;
+        showAlert("symbolSyncAlert", `Sync complete. ${json.newly_added} new symbols added.`, "success");
+    } catch (e) {
+        showAlert("symbolSyncAlert", "Error: " + e.message);
+    }
+}
+
+async function searchSymbols() {
+    const q = document.getElementById("symbolSearch").value.trim();
+    showAlert("symbolsAlert", "Searching symbols...", "info");
+    try {
+        const res = await fetch(`${API}/search_symbols?q=${encodeURIComponent(q)}`);
+        const json = await res.json();
+        if (!json.success) {
+            showAlert("symbolsAlert", "Search failed");
+            return;
+        }
+        const tbody = document.getElementById("symbolsBody");
+        tbody.innerHTML = "";
+        json.data.forEach((r, i) => {
+            const tr = document.createElement("tr");
+            tr.innerHTML = `
+                <td>${i + 1}</td>
+                <td><strong>${r.symbol}</strong></td>
+                <td>${r.base || ""}</td>
+                <td>${r.quote || ""}</td>
+                <td>${r.active ? "Yes" : "No"}</td>
+                <td>${r.created_at || ""}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+        showAlert("symbolsAlert", `Loaded ${json.data.length} symbols`, "success");
+    } catch (e) {
+        showAlert("symbolsAlert", "Error: " + e.message);
+    }
+}
+
+function exportSymbolsExcel() {
+    const q = document.getElementById("symbolSearch").value.trim();
+    const url = `${API}/export_symbols_excel?q=${encodeURIComponent(q)}`;
+    window.open(url, "_blank");
+}
+
+function showAlert(id, msg, type = "danger") {
+    const alertDiv = document.getElementById(id);
+    if (alertDiv) {
+        alertDiv.innerHTML = `
+            <div class="alert alert-${type} alert-dismissible fade show">
+                ${msg}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>`;
+    }
+}
+
+// Auto-load gainers/losers on tab open
+document.querySelectorAll('#mainTabs a').forEach(tab => {
+    tab.addEventListener('shown.bs.tab', e => {
+        const href = e.target.getAttribute('href');
+        if (href === '#gainers') loadGainers();
+        if (href === '#losers') loadLosers();
+        if (href === '#orderbook') updateExchangeStatus();
+    });
+});
+</script>
+</body>
+</html>
