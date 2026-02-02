@@ -2,13 +2,14 @@
 # WITH 10 EXCHANGES FOR LIVE ORDER DATA
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
-import mysql.connector
+#import mysql.connector
 import hashlib
 import ccxt
 import pandas as pd
 import pandas_ta as ta
 from datetime import datetime, timedelta
 import math
+from db.connection import get_conn
 import time
 import json
 import websocket
@@ -32,7 +33,7 @@ real_time_data = {
         "bybit": {"bids": [], "asks": []},
         "okx": {"bids": [], "asks": []},
         "gateio": {"bids": [], "asks": []},
-        "kucoin": {"bids": [], "asks": []},
+        #"kucoin": {"bids": [], "asks": []},
         "huobi": {"bids": [], "asks": []},
         "kraken": {"bids": [], "asks": []},
         "bitget": {"bids": [], "asks": []},
@@ -54,26 +55,88 @@ binance_ws = None
 bybit_ws = None
 okx_ws = None
 gateio_ws = None
-kucoin_ws = None
+#kucoin_ws = None
 huobi_ws = None
 kraken_ws = None
 bitget_ws = None
 mexc_ws = None
 coinbase_ws = None
 
-# ========= DB CONNECTION =========
-def get_conn():
-    return mysql.connector.connect(
-        host="localhost",
-        user="root",
-        password="toor",
-        database="crypto_data"
-    )
+# # ========= DB CONNECTION =========
+# def get_conn():
+#     return mysql.connector.connect(
+#         host="localhost",
+#         user="root",
+#         password="toor",
+#         database="crypto_data"
+#     )
 
 # ========= DB HELPERS =========
-def save_ohlcv(df, symbol, timeframe):
+# New Function for checking duplicate candles start
+def check_existing_candles(symbol, timeframe, timestamps):
+    """
+    Check which timestamps already exist in the database for a given symbol and timeframe.
+    Returns a set of existing timestamps.
+    """
+    if not timestamps:
+        return set()
+    
     conn = get_conn()
     cur = conn.cursor()
+    
+    # Convert timestamps to datetime objects for comparison
+    timestamp_list = []
+    for t in timestamps:
+        if isinstance(t, pd.Timestamp):
+            timestamp_list.append(t.to_pydatetime())
+        elif isinstance(t, datetime):
+            timestamp_list.append(t)
+        else:
+            # Try to parse as datetime
+            try:
+                timestamp_list.append(pd.to_datetime(t).to_pydatetime())
+            except:
+                continue
+    
+    if not timestamp_list:
+        cur.close()
+        conn.close()
+        return set()
+    
+    # Create placeholders for SQL IN clause
+    placeholders = ','.join(['%s'] * len(timestamp_list))
+    
+    sql = f"""
+    SELECT time_utc 
+    FROM ohlcv_data
+    WHERE symbol = %s AND timeframe = %s AND time_utc IN ({placeholders})
+    """
+    
+    params = [symbol, timeframe] + timestamp_list
+    cur.execute(sql, params)
+    
+    existing = {row[0] for row in cur.fetchall()}
+    
+    cur.close()
+    conn.close()
+    
+    return existing
+# End of Helper for Duplicate Candles 
+# Added Updated Function for Duplicated Cadnles  Start
+def save_ohlcv(df, symbol, timeframe):
+    """
+    Save OHLCV data to database, skipping duplicates.
+    Returns count of newly inserted candles.
+    """
+    if df.empty:
+        return 0
+    
+    conn = get_conn()
+    cur = conn.cursor()
+    
+    # Get existing timestamps from database
+    timestamps = df["Time (UTC)"].tolist()
+    existing_timestamps = check_existing_candles(symbol, timeframe, timestamps)
     
     sql = """
     INSERT IGNORE INTO ohlcv_data
@@ -82,10 +145,17 @@ def save_ohlcv(df, symbol, timeframe):
     """
     
     rows = []
+    skipped = 0
+    
     for i, r in df.iterrows():
         t = r["Time (UTC)"]
         if isinstance(t, pd.Timestamp):
             t = t.to_pydatetime()
+        
+        # Skip if this timestamp already exists
+        if t in existing_timestamps:
+            skipped += 1
+            continue
         
         # Calculate volume_diff: current volume - previous volume (0 for first candle)
         volume_diff = 0.0
@@ -106,13 +176,18 @@ def save_ohlcv(df, symbol, timeframe):
             volume_diff
         ))
     
+    inserted = 0
     if rows:
         cur.executemany(sql, rows)
+        inserted = cur.rowcount
         conn.commit()
     
     cur.close()
     conn.close()
-
+    
+    print(f"📊 OHLCV Save Summary: {inserted} new candles inserted, {skipped} duplicates skipped")
+    return inserted
+# End of Duplicated Candles Code
 def save_daily_gainers_losers(data_list):
     conn = get_conn()
     cur = conn.cursor()
@@ -270,10 +345,11 @@ def find_similar_patterns_fuzzy(current_pattern, hist_patterns, timeframe, max_m
 def realtime_analysis():
     """Advanced real-time analysis combining order book, trades, and technical indicators"""
     try:
+        #removed "kucoin", from code 
         # Get request parameters
         payload = request.get_json() or {}
         symbol = payload.get("symbol", real_time_data["current_symbol"])
-        selected_exchanges = payload.get("exchanges", ["binance", "bybit", "okx", "gateio", "kucoin", "huobi", "kraken", "bitget", "mexc", "coinbase"])
+        selected_exchanges = payload.get("exchanges", ["binance", "bybit", "okx", "gateio", "huobi", "kraken", "bitget", "mexc", "coinbase"])
         time_window = int(payload.get("time_window", 60))  # seconds
         prediction_horizon = int(payload.get("prediction_horizon", 5))  # minutes
         
@@ -1793,18 +1869,18 @@ def debug_patterns():
             for p in sample_patterns
         ]
     })
-
+# Removed Kucoin from code  ("kucoin", kucoin_ws),
 # ========= REAL-TIME WEBSOCKETS =========
 def close_websockets():
     """Close all WebSocket connections"""
-    global binance_ws, bybit_ws, okx_ws, gateio_ws, kucoin_ws, huobi_ws, kraken_ws, bitget_ws, mexc_ws, coinbase_ws
+    global binance_ws, bybit_ws, okx_ws, gateio_ws,  huobi_ws, kraken_ws, bitget_ws, mexc_ws, coinbase_ws
     
     websockets_to_close = [
         ("binance", binance_ws),
         ("bybit", bybit_ws),
         ("okx", okx_ws),
         ("gateio", gateio_ws),
-        ("kucoin", kucoin_ws),
+        #("kucoin", kucoin_ws),
         ("huobi", huobi_ws),
         ("kraken", kraken_ws),
         ("bitget", bitget_ws),
@@ -1819,16 +1895,16 @@ def close_websockets():
                 print(f"Closed {name} WebSocket")
             except Exception as e:
                 print(f"Error closing {name} WebSocket: {e}")
-    
+    # Removed Kucoin from code kucoin_ws = 
     # Clear all WebSocket references
-    binance_ws = bybit_ws = okx_ws = gateio_ws = kucoin_ws = huobi_ws = kraken_ws = bitget_ws = mexc_ws = coinbase_ws = None
+    binance_ws = bybit_ws = okx_ws = gateio_ws = huobi_ws = kraken_ws = bitget_ws = mexc_ws = coinbase_ws = None
     
     # Small delay to ensure WebSockets are properly closed
     time.sleep(0.5)
-
+# Removed Kucoin from code kucoin_ws,
 def start_websockets():
     """Start WebSocket connections for current symbol"""
-    global binance_ws, bybit_ws, okx_ws, gateio_ws, kucoin_ws, huobi_ws, kraken_ws, bitget_ws, mexc_ws, coinbase_ws
+    global binance_ws, bybit_ws, okx_ws, gateio_ws, huobi_ws, kraken_ws, bitget_ws, mexc_ws, coinbase_ws
     
     # Ensure old WebSockets are closed
     close_websockets()
@@ -1837,11 +1913,12 @@ def start_websockets():
     print(f"Starting WebSockets for symbol: {symbol}")
     
     # Convert symbol for each exchange
+    # Removed KuCoin From Code 
     binance_pair = symbol.replace('/', '').lower()
     bybit_pair = symbol.replace('/', '').upper()
     okx_pair = symbol.replace('/', '-').upper()
     gateio_pair = symbol.replace('/', '_').upper()
-    kucoin_pair = symbol.replace('/', '-').upper()
+    #kucoin_pair = symbol.replace('/', '-').upper()
     huobi_pair = symbol.replace('/', '').lower()
     kraken_pair = symbol.replace('/', '').upper()  # Note: Kraken uses different pairs for some coins
     bitget_pair = symbol.replace('/', '').upper()
@@ -1883,9 +1960,9 @@ def start_websockets():
                 elif exchange_name == 'gateio':
                     global gateio_ws
                     gateio_ws = ws
-                elif exchange_name == 'kucoin':
-                    global kucoin_ws
-                    kucoin_ws = ws
+                #elif exchange_name == 'kucoin':
+                    #global kucoin_ws
+                    #kucoin_ws = ws
                 elif exchange_name == 'huobi':
                     global huobi_ws
                     huobi_ws = ws
@@ -1968,28 +2045,28 @@ def start_websockets():
         print(f"Gate.io subscribed to {gateio_pair}")
     threading.Thread(target=ws_thread, args=('gateio', gateio_url, gateio_open, on_message_gateio), daemon=True).start()
     
-    # KuCoin
-    kucoin_url = "wss://ws-api.kucoin.com/endpoint"
-    def kucoin_open(ws):
+    # KuCoin Removed from Code
+    #kucoin_url = "wss://ws-api.kucoin.com/endpoint"
+    #def kucoin_open(ws):
         # Subscribe to order book
-        orderbook_sub = {
-            "type": "subscribe",
-            "topic": f"/market/level2:{kucoin_pair}",
-            "privateChannel": False,
-            "response": True
-        }
-        ws.send(json.dumps(orderbook_sub))
+     #   orderbook_sub = {
+            #"type": "subscribe",
+            #"topic": f"/market/level2:{kucoin_pair}",
+            #"privateChannel": False,
+            #"response": True
+        #}
+        #ws.send(json.dumps(orderbook_sub))
         
         # Subscribe to trades
-        trades_sub = {
-            "type": "subscribe",
-            "topic": f"/market/trade:{kucoin_pair}",
-            "privateChannel": False,
-            "response": True
-        }
-        ws.send(json.dumps(trades_sub))
-        print(f"KuCoin subscribed to {kucoin_pair}")
-    threading.Thread(target=ws_thread, args=('kucoin', kucoin_url, kucoin_open, on_message_kucoin), daemon=True).start()
+        #trades_sub = {
+         #   "type": "subscribe",
+         #   "topic": f"/market/trade:{kucoin_pair}",
+         #   "privateChannel": False,
+          #  "response": True
+        #}
+        #ws.send(json.dumps(trades_sub))
+        #print(f"KuCoin subscribed to {kucoin_pair}")
+    #threading.Thread(target=ws_thread, args=('kucoin', kucoin_url, kucoin_open, on_message_kucoin), daemon=True).start()
     
     # Huobi - FIXED: Added gzip decompression
     huobi_url = "wss://api.huobi.pro/ws"
@@ -2327,50 +2404,50 @@ def on_message_gateio(ws, message):
             print(f"Raw Gate.io message: {message[:200]}...")
         except:
             pass
-
-def on_message_kucoin(ws, message):
-    try:
-        # Verify we're still tracking the right symbol
-        current_symbol = real_time_data["current_symbol"].replace('/', '-')
-        data = json.loads(message)
+# Removed KuCoin from code
+# def on_message_kucoin(ws, message):
+#     try:
+#         # Verify we're still tracking the right symbol
+#         current_symbol = real_time_data["current_symbol"].replace('/', '-')
+#         data = json.loads(message)
         
-        # Only process if this is for our current symbol
-        if 'topic' in data:
-            topic = data['topic']
-            if current_symbol.upper() not in topic:
-                return  # Skip messages for other symbols
+#         # Only process if this is for our current symbol
+#         if 'topic' in data:
+#             topic = data['topic']
+#             if current_symbol.upper() not in topic:
+#                 return  # Skip messages for other symbols
         
-        # Handle order book updates
-        if 'market/level2:' in str(data.get('topic', '')):
-            # Level 2 order book update
-            if 'data' in data:
-                book_data = data['data']
-                if 'changes' in book_data:
-                    # KuCoin sends incremental updates, we need to maintain our own order book
-                    # For simplicity, we'll just store the entire snapshot if available
-                    if 'asks' in book_data and 'bids' in book_data:
-                        update_order_book("kucoin", book_data['bids'], book_data['asks'])
+#         # Handle order book updates
+#         if 'market/level2:' in str(data.get('topic', '')):
+#             # Level 2 order book update
+#             if 'data' in data:
+#                 book_data = data['data']
+#                 if 'changes' in book_data:
+#                     # KuCoin sends incremental updates, we need to maintain our own order book
+#                     # For simplicity, we'll just store the entire snapshot if available
+#                     if 'asks' in book_data and 'bids' in book_data:
+#                         update_order_book("kucoin", book_data['bids'], book_data['asks'])
         
-        # Handle trade updates
-        elif 'market/trade:' in str(data.get('topic', '')):
-            if 'data' in data:
-                trade_data = data['data']
-                if isinstance(trade_data, dict) and 'trades' in trade_data:
-                    for trade in trade_data['trades']:
-                        side = 'b' if trade.get('side') == 'buy' else 's'
-                        price = trade.get('price')
-                        size = trade.get('size')
+#         # Handle trade updates
+#         elif 'market/trade:' in str(data.get('topic', '')):
+#             if 'data' in data:
+#                 trade_data = data['data']
+#                 if isinstance(trade_data, dict) and 'trades' in trade_data:
+#                     for trade in trade_data['trades']:
+#                         side = 'b' if trade.get('side') == 'buy' else 's'
+#                         price = trade.get('price')
+#                         size = trade.get('size')
                         
-                        if price and size:
-                            process_trade("kucoin", {
-                                "price": float(price),
-                                "volume": float(size),
-                                "timestamp": time.time(),
-                                "side": side
-                            })
+#                         if price and size:
+#                             process_trade("kucoin", {
+#                                 "price": float(price),
+#                                 "volume": float(size),
+#                                 "timestamp": time.time(),
+#                                 "side": side
+#                             })
                 
-    except Exception as e:
-        print(f"KuCoin message error: {e}")
+#     except Exception as e:
+#         print(f"KuCoin message error: {e}")
 
 def on_message_huobi(ws, message):
     try:
@@ -3410,8 +3487,8 @@ def debug_exchanges():
         "last_update_time": datetime.fromtimestamp(real_time_data["last_update"]).strftime("%Y-%m-%d %H:%M:%S") if real_time_data["last_update"] > 0 else "Never",
         "exchanges": {}
     }
-    
-    for exchange in ["binance", "bybit", "okx", "gateio", "kucoin", "huobi", "kraken", "bitget", "mexc", "coinbase"]:
+    # Removed Kucoin from Code "kucoin", 
+    for exchange in ["binance", "bybit", "okx", "gateio", "huobi", "kraken", "bitget", "mexc", "coinbase"]:
         book = real_time_data["order_book"][exchange]
         status["exchanges"][exchange] = {
             "bids_count": len(book["bids"]),
@@ -3443,8 +3520,8 @@ def verify_symbol():
         "last_update_time": datetime.fromtimestamp(real_time_data["last_update"]).strftime("%Y-%m-%d %H:%M:%S") if real_time_data["last_update"] > 0 else "Never",
         "exchanges": {}
     }
-    
-    for exchange in ["binance", "bybit", "okx", "gateio", "kucoin", "huobi", "kraken", "bitget", "mexc", "coinbase"]:
+    # Removed KuCoin From Code "kucoin",
+    for exchange in ["binance", "bybit", "okx", "gateio", "huobi", "kraken", "bitget", "mexc", "coinbase"]:
         book = real_time_data["order_book"][exchange]
         status["exchanges"][exchange] = {
             "bids": len(book["bids"]),
@@ -3523,8 +3600,9 @@ if __name__ == "__main__":
     time.sleep(3)
     
     # Check initial WebSocket status
+    # Removed Kucoin from code "kucoin", 
     print("\n🔍 Initial WebSocket status for 10 exchanges:")
-    exchanges_list = ["binance", "bybit", "okx", "gateio", "kucoin", "huobi", "kraken", "bitget", "mexc", "coinbase"]
+    exchanges_list = ["binance", "bybit", "okx", "gateio", "huobi", "kraken", "bitget", "mexc", "coinbase"]
     for exchange in exchanges_list:
         book = real_time_data["order_book"][exchange]
         if book["bids"] or book["asks"]:
