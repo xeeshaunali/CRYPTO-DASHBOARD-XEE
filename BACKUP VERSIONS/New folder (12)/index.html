@@ -1084,280 +1084,182 @@
         <!-- Crypto Volumne and Patterns
           Start -->
                   <!-- CANDLE PATTERN & VOLUME SCANNER -->
-        <!-- CANDLE PATTERN & VOLUME SCANNER - UPDATED -->
-<div class="tab-pane fade" id="patternScanner">
-    <h4 class="mb-3">🎯 Binance Pattern & Volume Scanner (All Pairs)</h4>
-    
-    <!-- Database Update Section -->
-    <div class="card mb-4 border-primary">
-        <div class="card-header bg-primary text-white">
-            <h5 class="mb-0">1. Update Binance Pairs Database</h5>
-        </div>
-        <div class="card-body">
-            <p class="mb-3">First, fetch all Binance spot and futures pairs from the exchange:</p>
-            <div class="row">
-                <div class="col-md-6">
-                    <button class="btn btn-success w-100" onclick="updateBinancePairs()" id="updatePairsBtn">
-                        <span class="spinner-border spinner-border-sm d-none" id="updatePairsSpinner"></span>
-                        Fetch All Binance Pairs
-                    </button>
+        <div class="tab-pane fade" id="patternScanner">
+            <h4 class="mb-3">🎯 Candle Pattern & Volume Scanner</h4>
+            
+            <!-- Scanner Controls -->
+            <div class="card mb-4">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0">Scanner Configuration</h5>
                 </div>
-                <div class="col-md-6">
-                    <button class="btn btn-info w-100" onclick="getBinancePairsStatus()">
-                        Check Database Status
-                    </button>
-                </div>
-            </div>
-            <div id="pairsUpdateStatus" class="mt-3"></div>
-        </div>
-    </div>
-    
-    <!-- Scanner Configuration -->
-    <div class="card mb-4">
-        <div class="card-header bg-success text-white">
-            <h5 class="mb-0">2. Scanner Configuration</h5>
-        </div>
-        <div class="card-body">
-            <div class="row g-3">
-                <div class="col-md-3">
-                    <label class="form-label">Pair Type</label>
-                    <select id="scanPairType" class="form-select">
-                        <option value="spot" selected>Spot</option>
-                        <option value="future">Futures</option>
-                        <option value="all">All</option>
-                    </select>
-                </div>
-                <div class="col-md-3">
-                    <label class="form-label">Timeframe</label>
-                    <select id="scanTimeframe" class="form-select">
-                        <option value="5m">5 Minutes</option>
-                        <option value="15m" selected>15 Minutes</option>
-                        <option value="1h">1 Hour</option>
-                        <option value="4h">4 Hours</option>
-                    </select>
-                </div>
-                <div class="col-md-3">
-                    <label class="form-label">Volume Threshold</label>
-                    <div class="input-group">
-                        <input type="number" id="volumeThreshold" class="form-control" value="2.0" step="0.1" min="1.0" max="10.0">
-                        <span class="input-group-text">x</span>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-md-3">
+                            <label class="form-label">Timeframe</label>
+                            <select id="scanTimeframe" class="form-select">
+                                <option value="15m">15 Minutes</option>
+                                <option value="1h" selected>1 Hour</option>
+                                <option value="4h">4 Hours</option>
+                                <option value="1d">1 Day</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Volume Threshold</label>
+                            <div class="input-group">
+                                <input type="number" id="volumeThreshold" class="form-control" value="1.5" step="0.1" min="1.0" max="10.0">
+                                <span class="input-group-text">x</span>
+                            </div>
+                            <small class="text-muted">Minimum volume increase (e.g., 1.5 = 150%)</small>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Min 24h Volume</label>
+                            <div class="input-group">
+                                <input type="number" id="minVolume" class="form-control" value="100000" step="10000">
+                                <span class="input-group-text">$</span>
+                            </div>
+                            <small class="text-muted">Minimum USD volume</small>
+                        </div>
+                        <div class="col-md-3 d-flex align-items-end">
+                            <button class="btn btn-success w-100" onclick="scanCandlePatterns()">
+                                <span class="spinner-border spinner-border-sm d-none" id="scanSpinner"></span>
+                                Start Scan
+                            </button>
+                        </div>
                     </div>
-                    <small class="text-muted">Min volume increase (2.0 = 200%)</small>
-                </div>
-                <div class="col-md-3">
-                    <label class="form-label">Max Pairs</label>
-                    <input type="number" id="maxPairs" class="form-control" value="100" min="10" max="500">
+                    
+                    <!-- Real-time Monitoring Controls -->
+                    <div class="row mt-4">
+                        <div class="col-md-8">
+                            <label class="form-label">Real-time Monitoring</label>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="enableRealtimeMonitoring">
+                                <label class="form-check-label" for="enableRealtimeMonitoring">
+                                    Enable real-time volume monitoring
+                                </label>
+                            </div>
+                            <small class="text-muted">Continuously scan for volume spikes</small>
+                        </div>
+                        <div class="col-md-4 d-flex align-items-end">
+                            <button class="btn btn-warning w-100" onclick="startRealTimeMonitoring()" id="realtimeMonitorBtn">
+                                Start Monitoring
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
             
-            <div class="row mt-3">
-                <div class="col-md-4">
-                    <label class="form-label">Quote Asset</label>
-                    <select id="quoteAsset" class="form-select">
-                        <option value="USDT" selected>USDT</option>
-                        <option value="BTC">BTC</option>
-                        <option value="ETH">ETH</option>
-                        <option value="BNB">BNB</option>
-                        <option value="">All Quotes</option>
-                    </select>
-                </div>
-                <div class="col-md-4">
-                    <label class="form-label">Delay (ms)</label>
-                    <input type="number" id="scanDelay" class="form-control" value="100" min="50" max="1000">
-                    <small class="text-muted">Delay between requests to avoid rate limits</small>
-                </div>
-                <div class="col-md-4 d-flex align-items-end">
-                    <button class="btn btn-warning w-100" onclick="scanAllPairs()" id="scanAllBtn">
-                        <span class="spinner-border spinner-border-sm d-none" id="scanAllSpinner"></span>
-                        Start Scan
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-    
-    <!-- Continuous Scanning -->
-    <div class="card mb-4">
-        <div class="card-header bg-info text-white">
-            <h5 class="mb-0">3. Continuous Scanning</h5>
-        </div>
-        <div class="card-body">
-            <div class="row">
-                <div class="col-md-4">
-                    <label class="form-label">Scan Interval (minutes)</label>
-                    <input type="number" id="scanInterval" class="form-control" value="5" min="1" max="60">
-                </div>
-                <div class="col-md-4 d-flex align-items-end">
-                    <button class="btn btn-success w-100" onclick="startContinuousScan()" id="continuousScanBtn">
-                        Start Continuous Scan
-                    </button>
-                </div>
-                <div class="col-md-4 d-flex align-items-end">
-                    <button class="btn btn-danger w-100" onclick="stopContinuousScan()" id="stopScanBtn">
-                        Stop Scanning
-                    </button>
-                </div>
-            </div>
-            <div id="continuousScanStatus" class="mt-3"></div>
-        </div>
-    </div>
-    
-    <!-- Results Display -->
-    <div id="scanResults" class="mb-4">
-        <div class="card">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <h5 class="mb-0">Scan Results</h5>
-                <div>
-                    <span class="badge bg-primary me-2" id="totalScanned">0</span>
-                    <span class="badge bg-success me-2" id="volumeAlerts">0</span>
-                    <span class="badge bg-warning" id="patternAlerts">0</span>
-                </div>
-            </div>
-            <div class="card-body">
-                <!-- Volume Alerts -->
-                <div id="volumeAlertsSection" class="mb-4 d-none">
-                    <h6 class="text-danger">🚨 Volume Spike Alerts</h6>
-                    <div class="table-responsive">
-                        <table class="table table-sm table-hover">
-                            <thead class="table-danger">
-                                <tr>
-                                    <th>Symbol</th>
-                                    <th>Type</th>
-                                    <th>Volume Ratio</th>
-                                    <th>Current Volume</th>
-                                    <th>Timeframe</th>
-                                    <th>Action</th>
-                                </tr>
-                            </thead>
-                            <tbody id="volumeAlertsBody"></tbody>
-                        </table>
+            <!-- Results Display -->
+            <div id="scanResults" class="mb-4">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">Scan Results</h5>
+                        <span class="badge bg-secondary" id="resultCount">0 symbols found</span>
                     </div>
-                </div>
-                
-                <!-- Pattern Alerts -->
-                <div id="patternAlertsSection" class="mb-4 d-none">
-                    <h6 class="text-warning">🎯 Pattern Alerts</h6>
-                    <div class="table-responsive">
-                        <table class="table table-sm table-hover">
-                            <thead class="table-warning">
-                                <tr>
-                                    <th>Symbol</th>
-                                    <th>Type</th>
-                                    <th>Pattern</th>
-                                    <th>Price Change</th>
-                                    <th>Current Price</th>
-                                    <th>Action</th>
-                                </tr>
-                            </thead>
-                            <tbody id="patternAlertsBody"></tbody>
-                        </table>
-                    </div>
-                </div>
-                
-                <!-- All Results -->
-                <div class="table-responsive">
-                    <table class="table table-hover">
-                        <thead>
-                            <tr>
-                                <th>#</th>
-                                <th>Symbol</th>
-                                <th>Type</th>
-                                <th>Price</th>
-                                <th>Change</th>
-                                <th>Volume Ratio</th>
-                                <th>Patterns</th>
-                                <th>Volume Trend</th>
-                                <th>Action</th>
-                            </tr>
-                        </thead>
-                        <tbody id="scanResultsBody">
-                            <tr>
-                                <td colspan="9" class="text-center text-muted">
-                                    Run a scan to see results
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-    </div>
-    
-    <!-- Statistics Dashboard -->
-    <div class="card mb-4">
-        <div class="card-header">
-            <h5 class="mb-0">Statistics Dashboard</h5>
-        </div>
-        <div class="card-body">
-            <div class="row">
-                <div class="col-md-3 text-center">
-                    <div class="card h-100">
-                        <div class="card-body">
-                            <h6 class="card-title">Total Scanned</h6>
-                            <div class="display-4" id="statTotalScanned">0</div>
-                            <small class="text-muted">pairs</small>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-md-3 text-center">
-                    <div class="card h-100">
-                        <div class="card-body">
-                            <h6 class="card-title">Volume Spikes</h6>
-                            <div class="display-4 text-success" id="statVolumeSpikes">0</div>
-                            <small class="text-muted">> 200% increase</small>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-md-3 text-center">
-                    <div class="card h-100">
-                        <div class="card-body">
-                            <h6 class="card-title">Patterns Found</h6>
-                            <div class="display-4 text-warning" id="statPatternsFound">0</div>
-                            <small class="text-muted">candle patterns</small>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-md-3 text-center">
-                    <div class="card h-100">
-                        <div class="card-body">
-                            <h6 class="card-title">Success Rate</h6>
-                            <div class="display-4 text-info" id="statSuccessRate">0%</div>
-                            <small class="text-muted">successful scans</small>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>#</th>
+                                        <th>Symbol</th>
+                                        <th>Price</th>
+                                        <th>24h Change</th>
+                                        <th>Volume Ratio</th>
+                                        <th>24h Volume</th>
+                                        <th>Patterns</th>
+                                        <th>Volume Trend</th>
+                                        <th>Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="scanResultsBody">
+                                    <tr>
+                                        <td colspan="9" class="text-center text-muted">
+                                            Run a scan to see results
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
                         </div>
                     </div>
                 </div>
             </div>
-        </div>
-    </div>
-    
-    <!-- Real-time Log -->
-    <div class="card">
-        <div class="card-header">
-            <h5 class="mb-0">Scan Log</h5>
-        </div>
-        <div class="card-body">
-            <div class="table-responsive">
-                <table class="table table-sm">
-                    <thead>
-                        <tr>
-                            <th>Time</th>
-                            <th>Symbol</th>
-                            <th>Status</th>
-                            <th>Volume Ratio</th>
-                            <th>Pattern</th>
-                            <th>Details</th>
-                        </tr>
-                    </thead>
-                    <tbody id="scanLogBody">
-                        <tr>
-                            <td colspan="6" class="text-center text-muted">No scan data yet</td>
-                        </tr>
-                    </tbody>
-                </table>
+            
+            <!-- Real-time Alerts -->
+            <div id="realTimeAlerts" class="d-none">
+                <div class="card border-warning">
+                    <div class="card-header bg-warning text-dark">
+                        <h5 class="mb-0">🎯 Real-time Volume Alerts</h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="alertsContainer">
+                            <!-- Alerts will be dynamically added here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Volume Analysis Chart -->
+            <div class="card mt-4">
+                <div class="card-header">
+                    <h5 class="mb-0">Volume Analysis Dashboard</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-8">
+                            <div class="chart-container">
+                                <canvas id="volumeChart" height="300"></canvas>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card h-100">
+                                <div class="card-body">
+                                    <h6 class="card-title">Volume Statistics</h6>
+                                    <div class="mb-3">
+                                        <p class="mb-1"><strong>Current Volume:</strong> <span id="currentVolumeStat">-</span></p>
+                                        <p class="mb-1"><strong>Average (5):</strong> <span id="avgVolume5Stat">-</span></p>
+                                        <p class="mb-1"><strong>Average (10):</strong> <span id="avgVolume10Stat">-</span></p>
+                                        <p class="mb-1"><strong>Volume Trend:</strong> <span id="volumeTrendStat" class="badge bg-secondary">-</span></p>
+                                    </div>
+                                    <hr>
+                                    <h6 class="card-title">Pattern Statistics</h6>
+                                    <p class="mb-1"><strong>Total Patterns:</strong> <span id="totalPatternsStat">0</span></p>
+                                    <p class="mb-1"><strong>Bullish Patterns:</strong> <span id="bullishPatternsStat">0</span></p>
+                                    <p class="mb-1"><strong>Bearish Patterns:</strong> <span id="bearishPatternsStat">0</span></p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Detailed Analysis -->
+            <div class="card mt-4">
+                <div class="card-header">
+                    <h5 class="mb-0">Detailed Symbol Analysis</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <label class="form-label">Select Symbol for Detailed Analysis</label>
+                            <select id="detailSymbolSelect" class="form-select" onchange="loadDetailedAnalysis()">
+                                <option value="">Select a symbol...</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Analysis Timeframe</label>
+                            <select id="detailTimeframe" class="form-select" onchange="loadDetailedAnalysis()">
+                                <option value="15m">15m</option>
+                                <option value="1h" selected>1h</option>
+                                <option value="4h">4h</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div id="detailedAnalysis" class="mt-3">
+                        <!-- Detailed analysis will be loaded here -->
+                    </div>
+                </div>
             </div>
         </div>
-    </div>
-</div>
         <!-- End -->
     </div>
 </div>
@@ -4309,490 +4211,6 @@ document.querySelector('#mainTabs a[href="#patternScanner"]').addEventListener('
             button.textContent = "Start Monitoring";
             button.className = "btn btn-warning w-100";
         }
-    }
-});
-
-// === BINANCE ALL PAIRS SCANNER FUNCTIONS ===
-let scanLog = [];
-let lastScanResults = null;
-
-async function updateBinancePairs() {
-    const spinner = document.getElementById("updatePairsSpinner");
-    const button = document.getElementById("updatePairsBtn");
-    
-    // Show loading state
-    spinner.classList.remove("d-none");
-    button.disabled = true;
-    
-    try {
-        const res = await fetch(API + "/update_binance_pairs", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" }
-        });
-        
-        const data = await res.json();
-        
-        if (data.success) {
-            showStatus("pairsUpdateStatus", 
-                `✅ Updated ${data.spot_count} spot and ${data.futures_count} futures pairs`, 
-                "success");
-            
-            // Log
-            addToScanLog({
-                time: new Date().toLocaleTimeString(),
-                symbol: "ALL",
-                status: "SUCCESS",
-                details: `Updated ${data.spot_count + data.futures_count} pairs`
-            });
-        } else {
-            showStatus("pairsUpdateStatus", `❌ Error: ${data.error}`, "danger");
-        }
-        
-    } catch (error) {
-        console.error("Update error:", error);
-        showStatus("pairsUpdateStatus", `❌ Connection error: ${error.message}`, "danger");
-    } finally {
-        // Hide loading state
-        spinner.classList.add("d-none");
-        button.disabled = false;
-    }
-}
-
-async function getBinancePairsStatus() {
-    try {
-        const res = await fetch(API + "/get_binance_pairs?limit=5");
-        const data = await res.json();
-        
-        if (data.success) {
-            showStatus("pairsUpdateStatus", 
-                `📊 Database has ${data.count} active pairs`, 
-                "info");
-        }
-    } catch (error) {
-        console.error("Status check error:", error);
-    }
-}
-
-async function scanAllPairs() {
-    const spinner = document.getElementById("scanAllSpinner");
-    const button = document.getElementById("scanAllBtn");
-    
-    // Show loading state
-    spinner.classList.remove("d-none");
-    button.disabled = true;
-    
-    try {
-        const pairType = document.getElementById("scanPairType").value;
-        const timeframe = document.getElementById("scanTimeframe").value;
-        const volumeThreshold = parseFloat(document.getElementById("volumeThreshold").value);
-        const maxPairs = parseInt(document.getElementById("maxPairs").value);
-        const quoteAsset = document.getElementById("quoteAsset").value;
-        const delayMs = parseInt(document.getElementById("scanDelay").value);
-        
-        const res = await fetch(API + "/scan_all_pairs", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                timeframe: timeframe,
-                pair_type: pairType,
-                quote_asset: quoteAsset || "",
-                max_pairs: maxPairs,
-                delay_ms: delayMs
-            })
-        });
-        
-        const data = await res.json();
-        
-        if (data.success) {
-            // Store results
-            lastScanResults = data;
-            
-            // Update statistics
-            document.getElementById("totalScanned").textContent = data.scanned_pairs;
-            document.getElementById("volumeAlerts").textContent = data.volume_alerts;
-            document.getElementById("patternAlerts").textContent = data.pattern_alerts;
-            
-            // Update dashboard stats
-            document.getElementById("statTotalScanned").textContent = data.scanned_pairs;
-            document.getElementById("statVolumeSpikes").textContent = data.volume_alerts;
-            document.getElementById("statPatternsFound").textContent = data.pattern_alerts;
-            document.getElementById("statSuccessRate").textContent = 
-                `${Math.round((data.successful_scans / data.scanned_pairs) * 100)}%`;
-            
-            // Show/hide alerts sections
-            const volumeSection = document.getElementById("volumeAlertsSection");
-            const patternSection = document.getElementById("patternAlertsSection");
-            
-            if (data.volume_alerts > 0) {
-                volumeSection.classList.remove("d-none");
-                updateVolumeAlerts(data.volume_alerts_list);
-            } else {
-                volumeSection.classList.add("d-none");
-            }
-            
-            if (data.pattern_alerts > 0) {
-                patternSection.classList.remove("d-none");
-                updatePatternAlerts(data.pattern_alerts_list);
-            } else {
-                patternSection.classList.add("d-none");
-            }
-            
-            // Update results table
-            updateScanResultsTable(data.results);
-            
-            // Log success
-            addToScanLog({
-                time: new Date().toLocaleTimeString(),
-                symbol: "SCAN",
-                status: "COMPLETED",
-                volumeRatio: "-",
-                pattern: "-",
-                details: `Scanned ${data.scanned_pairs} pairs, found ${data.volume_alerts} volume spikes`
-            });
-            
-            showStatus("continuousScanStatus", 
-                `✅ Scan completed: ${data.successful_scans}/${data.scanned_pairs} successful`, 
-                "success");
-                
-        } else {
-            showStatus("continuousScanStatus", `❌ Scan failed: ${data.error}`, "danger");
-        }
-        
-    } catch (error) {
-        console.error("Scan error:", error);
-        showStatus("continuousScanStatus", `❌ Connection error: ${error.message}`, "danger");
-    } finally {
-        // Hide loading state
-        spinner.classList.add("d-none");
-        button.disabled = false;
-    }
-}
-
-function updateVolumeAlerts(alerts) {
-    const tbody = document.getElementById("volumeAlertsBody");
-    tbody.innerHTML = '';
-    
-    alerts.forEach(alert => {
-        const row = document.createElement("tr");
-        row.innerHTML = `
-            <td>
-                <strong>${alert.symbol}</strong>
-                <span class="badge ${alert.pair_type === 'spot' ? 'bg-info' : 'bg-warning'} ms-1">
-                    ${alert.pair_type}
-                </span>
-            </td>
-            <td>${alert.pair_type}</td>
-            <td class="text-success fw-bold">${alert.volume_ratio.toFixed(2)}x</td>
-            <td>${formatVolume(alert.current_volume)}</td>
-            <td>${alert.timeframe}</td>
-            <td>
-                <button class="btn btn-sm btn-outline-primary" onclick="analyzeSymbol('${alert.symbol}', '${alert.pair_type}')">
-                    Analyze
-                </button>
-            </td>
-        `;
-        tbody.appendChild(row);
-    });
-}
-
-function updatePatternAlerts(alerts) {
-    const tbody = document.getElementById("patternAlertsBody");
-    tbody.innerHTML = '';
-    
-    alerts.forEach(alert => {
-        const row = document.createElement("tr");
-        const priceChange = alert.price_change || 0;
-        const priceClass = priceChange > 0 ? "text-success" : "text-danger";
-        
-        row.innerHTML = `
-            <td>
-                <strong>${alert.symbol}</strong>
-                <span class="badge ${alert.pair_type === 'spot' ? 'bg-info' : 'bg-warning'} ms-1">
-                    ${alert.pair_type}
-                </span>
-            </td>
-            <td>${alert.pair_type}</td>
-            <td><span class="badge bg-warning text-dark">${alert.pattern}</span></td>
-            <td class="${priceClass}">${priceChange > 0 ? '+' : ''}${priceChange.toFixed(2)}%</td>
-            <td>${alert.current_price?.toFixed(6) || 'N/A'}</td>
-            <td>
-                <button class="btn btn-sm btn-outline-primary" onclick="analyzeSymbol('${alert.symbol}', '${alert.pair_type}')">
-                    Analyze
-                </button>
-            </td>
-        `;
-        tbody.appendChild(row);
-    });
-}
-
-function updateScanResultsTable(results) {
-    const tbody = document.getElementById("scanResultsBody");
-    
-    if (!results || results.length === 0) {
-        tbody.innerHTML = `
-            <tr>
-                <td colspan="9" class="text-center text-muted">
-                    No matching symbols found. Try adjusting your criteria.
-                </td>
-            </tr>
-        `;
-        return;
-    }
-    
-    tbody.innerHTML = '';
-    
-    results.forEach((result, index) => {
-        // Determine volume ratio color
-        let volumeRatioClass = "text-muted";
-        if (result.volume_ratio >= 3) {
-            volumeRatioClass = "text-success fw-bold";
-        } else if (result.volume_ratio >= 2) {
-            volumeRatioClass = "text-warning";
-        }
-        
-        // Determine price change color
-        const priceChange = result.price_change || 0;
-        let priceChangeClass = "text-muted";
-        if (priceChange > 0) {
-            priceChangeClass = "text-success";
-        } else if (priceChange < 0) {
-            priceChangeClass = "text-danger";
-        }
-        
-        // Format patterns
-        let patternsHtml = "None";
-        if (result.pattern) {
-            patternsHtml = `<span class="badge bg-warning text-dark">${result.pattern}</span>`;
-        }
-        
-        const row = document.createElement("tr");
-        row.innerHTML = `
-            <td>${index + 1}</td>
-            <td>
-                <strong>${result.symbol}</strong>
-                <span class="badge ${result.pair_type === 'spot' ? 'bg-info' : 'bg-warning'} ms-1">
-                    ${result.pair_type}
-                </span>
-            </td>
-            <td>${result.pair_type}</td>
-            <td>${result.current_price?.toFixed(6) || 'N/A'}</td>
-            <td class="${priceChangeClass}">
-                ${priceChange > 0 ? '+' : ''}${priceChange.toFixed(2)}%
-            </td>
-            <td class="${volumeRatioClass}">
-                ${result.volume_ratio?.toFixed(2) || 'N/A'}x
-            </td>
-            <td>${patternsHtml}</td>
-            <td>
-                <span class="badge ${result.volume_ratio >= 2 ? 'bg-success' : result.volume_ratio >= 1.5 ? 'bg-warning' : 'bg-secondary'}">
-                    ${result.volume_ratio >= 2 ? 'SPIKE' : result.volume_ratio >= 1.5 ? 'HIGH' : 'NORMAL'}
-                </span>
-            </td>
-            <td>
-                <button class="btn btn-sm btn-primary" onclick="analyzeSymbol('${result.symbol}', '${result.pair_type}')">
-                    Analyze
-                </button>
-            </td>
-        `;
-        tbody.appendChild(row);
-    });
-}
-
-function addToScanLog(entry) {
-    const tbody = document.getElementById("scanLogBody");
-    
-    // Create new row
-    const row = document.createElement("tr");
-    
-    // Determine status badge
-    let statusBadge = "bg-secondary";
-    if (entry.status === "SUCCESS" || entry.status === "COMPLETED") {
-        statusBadge = "bg-success";
-    } else if (entry.status === "ERROR") {
-        statusBadge = "bg-danger";
-    }
-    
-    row.innerHTML = `
-        <td>${entry.time}</td>
-        <td><small>${entry.symbol}</small></td>
-        <td><span class="badge ${statusBadge}">${entry.status}</span></td>
-        <td>${entry.volumeRatio || "-"}</td>
-        <td>${entry.pattern || "-"}</td>
-        <td><small>${entry.details}</small></td>
-    `;
-    
-    // Insert at top
-    if (tbody.firstChild && tbody.firstChild.textContent.includes('No scan data')) {
-        tbody.innerHTML = '';
-    }
-    tbody.insertBefore(row, tbody.firstChild);
-    
-    // Keep only last 15 entries
-    const rows = tbody.getElementsByTagName('tr');
-    if (rows.length > 15) {
-        tbody.removeChild(rows[rows.length - 1]);
-    }
-    
-    // Add to memory log
-    scanLog.unshift(entry);
-    if (scanLog.length > 50) {
-        scanLog.pop();
-    }
-}
-
-async function analyzeSymbol(symbol, pairType) {
-    try {
-        // Set live symbol
-        document.getElementById("liveSymbol").value = symbol;
-        await setLiveSymbol();
-        
-        // Switch to real-time analysis tab
-        const tab = document.querySelector('#mainTabs a[href="#realtimeAnalysis"]');
-        if (tab) {
-            tab.click();
-        }
-        
-        // Add to log
-        addToScanLog({
-            time: new Date().toLocaleTimeString(),
-            symbol: symbol,
-            status: "ANALYZING",
-            details: `Started analysis for ${symbol} (${pairType})`
-        });
-        
-    } catch (error) {
-        console.error("Analysis error:", error);
-        alert(`Could not analyze ${symbol}: ${error.message}`);
-    }
-}
-
-async function startContinuousScan() {
-    try {
-        const interval = parseInt(document.getElementById("scanInterval").value);
-        
-        const res = await fetch(API + "/continuous_scan", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                interval: interval,
-                max_pairs: 50,
-                quote_asset: document.getElementById("quoteAsset").value
-            })
-        });
-        
-        const data = await res.json();
-        
-        if (data.success) {
-            showStatus("continuousScanStatus", 
-                `✅ Continuous scan started. Scanning every ${interval} minutes.`, 
-                "success");
-            
-            // Update button states
-            document.getElementById("continuousScanBtn").disabled = true;
-            document.getElementById("stopScanBtn").disabled = false;
-            
-            // Start periodic status checks
-            startStatusMonitoring();
-            
-        } else {
-            showStatus("continuousScanStatus", `❌ Error: ${data.error}`, "danger");
-        }
-        
-    } catch (error) {
-        console.error("Start scan error:", error);
-        showStatus("continuousScanStatus", `❌ Connection error: ${error.message}`, "danger");
-    }
-}
-
-async function stopContinuousScan() {
-    try {
-        const res = await fetch(API + "/stop_continuous_scan", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" }
-        });
-        
-        const data = await res.json();
-        
-        if (data.success) {
-            showStatus("continuousScanStatus", "⏹️ Continuous scan stopped", "info");
-            
-            // Update button states
-            document.getElementById("continuousScanBtn").disabled = false;
-            document.getElementById("stopScanBtn").disabled = true;
-            
-        }
-        
-    } catch (error) {
-        console.error("Stop scan error:", error);
-    }
-}
-
-async function getScanStatus() {
-    try {
-        const res = await fetch(API + "/get_scan_status");
-        const data = await res.json();
-        
-        if (data.success) {
-            if (data.active) {
-                const nextScan = new Date(data.config.next_scan);
-                const now = new Date();
-                const minutesLeft = Math.round((nextScan - now) / (1000 * 60));
-                
-                showStatus("continuousScanStatus", 
-                    `🔄 Scan active. Next scan in ${minutesLeft} minutes.`, 
-                    "info");
-            }
-        }
-    } catch (error) {
-        console.error("Status check error:", error);
-    }
-}
-
-function startStatusMonitoring() {
-    // Check status every 30 seconds
-    if (window.statusInterval) {
-        clearInterval(window.statusInterval);
-    }
-    
-    window.statusInterval = setInterval(() => {
-        getScanStatus();
-    }, 30000);
-}
-
-function showStatus(elementId, message, type = "info") {
-    const element = document.getElementById(elementId);
-    if (element) {
-        element.innerHTML = `
-            <div class="alert alert-${type} alert-dismissible fade show">
-                ${message}
-                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-            </div>
-        `;
-    }
-}
-
-function formatVolume(volume) {
-    if (volume >= 1000000) {
-        return (volume / 1000000).toFixed(2) + 'M';
-    } else if (volume >= 1000) {
-        return (volume / 1000).toFixed(2) + 'K';
-    }
-    return volume.toFixed(2);
-}
-
-// Auto-run database check when tab opens
-document.querySelector('#mainTabs a[href="#patternScanner"]').addEventListener('shown.bs.tab', function() {
-    // Check database status after a delay
-    setTimeout(() => {
-        getBinancePairsStatus();
-    }, 1000);
-});
-
-// Stop monitoring when leaving tab
-document.querySelector('#mainTabs a[href="#patternScanner"]').addEventListener('hide.bs.tab', function() {
-    if (window.statusInterval) {
-        clearInterval(window.statusInterval);
-        window.statusInterval = null;
     }
 });
 </script>
