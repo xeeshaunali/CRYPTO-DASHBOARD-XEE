@@ -1,0 +1,1171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>SUPER BOT v4 – Signals, Rotation & Real-Time Order Flow</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- Bootstrap CSS + JS Bundle (includes Popper) -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <!-- Custom Style added into style.css Start -->     
+    <link rel="stylesheet" href="style.css">
+    <!-- End -->
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- TradingView Widget -->
+    <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
+    <!-- Chart.js for Real-Time Analysis -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <!-- All the functions are added into app.js Start -->
+    <script src="app.js"></script>
+    <!-- End -->
+    
+</head>
+
+<body>
+    
+<div class="container mt-4">
+    <h1 class="text-center text-primary mb-4">SUPER BOT v4 – Signals, Rotation & Real-Time Order Flow</h1>
+
+    <!-- Live Symbol Selector for Real-Time Tabs -->
+    <div class="row mb-4">
+        <div class="col-md-5">
+            <label class="form-label fw-bold">Live Symbol for Order Book & Trades</label>
+            <input id="liveSymbol" class="form-control" value="BTC/USDT" placeholder="e.g. SOL/USDT, PHB/USDT">
+        </div>
+        <div class="col-md-3 d-flex align-items-end">
+            <button class="btn btn-primary w-100" onclick="setLiveSymbol()">Set Live Symbol</button>
+        </div>
+        <div class="col-md-4 d-flex align-items-end">
+            <div id="liveSymbolStatus" class="ms-3 text-muted fst-italic"></div>
+        </div>
+    </div>
+
+    <ul class="nav nav-tabs mb-4" id="mainTabs">
+        <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#ohlcv">OHLCV</a></li>
+        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#signals">Signals</a></li>
+        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#gainers">Gainers</a></li>
+        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#losers">Losers</a></li>
+        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#rotation">Rotation</a></li>
+        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#orderbook">Order Book (Live)</a></li>
+        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#trades">Trades (Live)</a></li>
+        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#realtimeAnalysis">Real-Time Analysis</a></li>
+        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#predictions">Predictions</a></li>
+        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#system">System</a></li>
+        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#symbols">Symbols</a></li>
+        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#trainBot">Train Bot</a></li>
+        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#predictCandle">Predict Candle</a></li>
+        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#patternScanner">Pattern & Volume Scan</a></li>
+    </ul>
+
+    <div class="tab-content">
+        <!-- OHLCV -->
+        <div class="tab-pane fade show active" id="ohlcv">
+            <div class="row g-3 mb-3">
+                <div class="col-md-4">
+                    <input id="symbol" class="form-control" value="BTC/USDT" placeholder="e.g. PHB/USDT">
+                </div>
+                <div class="col-md-3">
+                    <select id="timeframe" class="form-control">
+                        <option value="1m">1m</option>
+                        <option value="5m">5m</option>
+                        <option value="15m">15m</option>
+                        <option value="1h">1h</option>
+                        <option value="4h" selected>4h</option>
+                        <option value="1d">1d</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small">From Year</label>
+                    <input type="number" id="fromYear" class="form-control" min="2000" max="2100">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small">To Year</label>
+                    <input type="number" id="toYear" class="form-control" min="2000" max="2100">
+                </div>
+                <div class="col-md-1 d-flex align-items-end">
+                    <button class="btn btn-success w-100" onclick="fetchOHLCV()">Fetch Live</button>
+                </div>
+            </div>
+            <button class="btn btn-warning mb-3" onclick="loadFromDB()">Load from DB</button>
+            <div id="ohlcvAlert"></div>
+            <table class="table table-sm table-bordered table-striped">
+                <thead class="table-dark">
+                    <tr><th>#</th><th>Time (UTC)</th><th>Open</th><th>High</th><th>Low</th><th>Close</th><th>Volume</th><th>Vol Change</th></tr>
+                </thead>
+                <tbody id="ohlcvBody"></tbody>
+            </table>
+        </div>
+
+        <!-- SIGNALS -->
+        <div class="tab-pane fade" id="signals">
+            <div class="row g-3 mb-4">
+    <div class="col-md-4">
+        <input id="signalSymbol" class="form-control" value="BTC/USDT">
+    </div>
+    <div class="col-md-3">
+        <select id="signalTimeframe" class="form-control">
+            <option value="15m">15m</option>
+            <option value="1h">1h</option>
+            <option value="4h" selected>4h</option>
+            <option value="1d">1d</option>
+        </select>
+    </div>
+    <div class="col-md-2">
+        <button class="btn btn-primary w-100" onclick="analyzeSymbol()">Analyze</button>
+    </div>
+</div>
+            <div id="signalAlert"></div>
+            <div class="card mb-4">
+                <div class="card-header">Latest Candle & Indicators</div>
+                <div class="card-body" id="signalDetails">
+                    <p class="text-muted mb-0">Run analysis to see RSI / MACD / EMAs and signal here.</p>
+                </div>
+            </div>
+            <h4>Signals for Today's Top Gainers</h4>
+            <button class="btn btn-success mb-3" onclick="loadGainerSignals()">Scan Gainers</button>
+            <div id="gainerSignalsAlert"></div>
+            <table class="table table-bordered table-sm">
+                <thead class="table-success">
+                    <tr>
+                        <th>#</th><th>Symbol</th><th>24h %</th><th>Volume</th><th>Close</th><th>RSI</th><th>Signal</th><th>Score</th><th>Confidence</th><th>Trend</th><th>Risk</th>
+                    </tr>
+                </thead>
+                <tbody id="gainerSignalsBody"></tbody>
+            </table>
+        </div>
+
+        <!-- GAINERS -->
+        <div class="tab-pane fade" id="gainers">
+            <div class="text-center my-3">
+                <button class="btn btn-success" onclick="refreshGainersLosers()">Refresh Gainers & Losers</button>
+                <div id="gainersAlert" class="mt-3"></div>
+            </div>
+            <table class="table table-bordered">
+                <thead class="table-success">
+                    <tr><th>#</th><th>Symbol</th><th>Price</th><th>24h %</th><th>Volume</th></tr>
+                </thead>
+                <tbody id="gainersBody"></tbody>
+            </table>
+        </div>
+
+        <!-- LOSERS -->
+        <div class="tab-pane fade" id="losers">
+            <div class="text-center my-3">
+                <button class="btn btn-danger" onclick="refreshGainersLosers()">Refresh Gainers & Losers</button>
+                <div id="losersAlert" class="mt-3"></div>
+            </div>
+            <table class="table table-bordered">
+                <thead class="table-danger">
+                    <tr><th>#</th><th>Symbol</th><th>Price</th><th>24h %</th><th>Volume</th></tr>
+                </thead>
+                <tbody id="losersBody"></tbody>
+            </table>
+        </div>
+
+        <!-- ROTATION -->
+        <div class="tab-pane fade" id="rotation">
+            <div class="text-center my-3">
+                <p>Rotation logic: when one coin pumps, find similar-use-case coins with lower or equal size and bullish signals.</p>
+                <button class="btn btn-primary" onclick="loadRotation()">Scan Rotation Opportunities</button>
+                <div id="rotationAlert" class="mt-3"></div>
+            </div>
+            <div id="rotationResults"></div>
+        </div>
+
+        <!-- ORDER BOOK (LIVE) - MODIFIED WITH CHECKBOXES FOR 10 EXCHANGES -->
+        <div class="tab-pane fade" id="orderbook">
+            <h4 class="mb-3">Live Combined Order Book & Order Flow</h4>
+            
+            <div class="exchange-controls">
+                <div class="row">
+                    <div class="col-md-8">
+                        <label class="form-label fw-bold">Select Exchanges:</label>
+                        <div class="mt-2">
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="checkbox" id="exchangeAll" checked onchange="toggleAllExchanges()">
+                                <label class="form-check-label" for="exchangeAll">All</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input exchange-checkbox" type="checkbox" id="exchangeBinance" value="binance" checked onchange="updateExchangeSelection()">
+                                <label class="form-check-label" for="exchangeBinance">Binance</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input exchange-checkbox" type="checkbox" id="exchangeBybit" value="bybit" checked onchange="updateExchangeSelection()">
+                                <label class="form-check-label" for="exchangeBybit">Bybit</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input exchange-checkbox" type="checkbox" id="exchangeOKX" value="okx" checked onchange="updateExchangeSelection()">
+                                <label class="form-check-label" for="exchangeOKX">OKX</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input exchange-checkbox" type="checkbox" id="exchangeGateio" value="gateio" checked onchange="updateExchangeSelection()">
+                                <label class="form-check-label" for="exchangeGateio">Gate.io</label>
+                            </div>
+                            <!-- NEW EXCHANGES ADDED -->
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input exchange-checkbox" type="checkbox" id="exchangeKucoin" value="kucoin" checked onchange="updateExchangeSelection()">
+                                <label class="form-check-label" for="exchangeKucoin">KuCoin</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input exchange-checkbox" type="checkbox" id="exchangeHuobi" value="huobi" checked onchange="updateExchangeSelection()">
+                                <label class="form-check-label" for="exchangeHuobi">Huobi</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input exchange-checkbox" type="checkbox" id="exchangeKraken" value="kraken" checked onchange="updateExchangeSelection()">
+                                <label class="form-check-label" for="exchangeKraken">Kraken</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input exchange-checkbox" type="checkbox" id="exchangeBitget" value="bitget" checked onchange="updateExchangeSelection()">
+                                <label class="form-check-label" for="exchangeBitget">Bitget</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input exchange-checkbox" type="checkbox" id="exchangeMexc" value="mexc" checked onchange="updateExchangeSelection()">
+                                <label class="form-check-label" for="exchangeMexc">MEXC</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input exchange-checkbox" type="checkbox" id="exchangeCoinbase" value="coinbase" checked onchange="updateExchangeSelection()">
+                                <label class="form-check-label" for="exchangeCoinbase">Coinbase</label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold">Depth Levels:</label>
+                        <select id="depthLevels" class="form-select" onchange="updateRealTime()">
+                            <option value="10">10 levels</option>
+                            <option value="15" selected>15 levels</option>
+                            <option value="20">20 levels</option>
+                            <option value="25">25 levels</option>
+                            <option value="30">30 levels</option>
+                            <option value="40">40 levels</option>
+                            <option value="50">50 levels</option>
+                            <option value="60">60 levels</option>
+                            <option value="100">100 levels</option>
+                            <option value="200">200 levels</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="row mt-3">
+                    <div class="col-md-12">
+                        <div class="alert alert-info py-2 mb-0" id="exchangeStatus">
+                            <small>Selected: All 10 exchanges</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="orderBookContent" class="border p-4 bg-light rounded">
+                <p class="text-muted">Select a symbol at the top and wait for real-time data to load...</p>
+            </div>
+        </div>
+
+        <!-- TRADES (LIVE) -->
+        <div class="tab-pane fade" id="trades">
+            <h4 class="mb-3">Recent Executed Trades (Buy/Sell Aggression)</h4>
+            <div id="tradesContent" class="border p-4 bg-light rounded">
+                <p class="text-muted">Loading live trades...</p>
+            </div>
+        </div>
+
+        <!-- REAL-TIME ANALYSIS - UPDATED LAYOUT WITH 10 EXCHANGES -->
+        <div class="tab-pane fade" id="realtimeAnalysis">
+            <h4 class="mb-3">Real-Time Market Analysis & Predictions</h4>
+            
+            <!-- Controls -->
+            <div class="exchange-controls">
+                <div class="row">
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Select Exchanges:</label>
+                        <div class="mt-2">
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="checkbox" id="rtExchangeAll" checked onchange="toggleAllExchangesRT()">
+                                <label class="form-check-label" for="rtExchangeAll">All</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input rt-exchange-checkbox" type="checkbox" id="rtExchangeBinance" value="binance" checked onchange="updateExchangeSelectionRT()">
+                                <label class="form-check-label" for="rtExchangeBinance">Binance</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input rt-exchange-checkbox" type="checkbox" id="rtExchangeBybit" value="bybit" checked onchange="updateExchangeSelectionRT()">
+                                <label class="form-check-label" for="rtExchangeBybit">Bybit</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input rt-exchange-checkbox" type="checkbox" id="rtExchangeOKX" value="okx" checked onchange="updateExchangeSelectionRT()">
+                                <label class="form-check-label" for="rtExchangeOKX">OKX</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input rt-exchange-checkbox" type="checkbox" id="rtExchangeGateio" value="gateio" checked onchange="updateExchangeSelectionRT()">
+                                <label class="form-check-label" for="rtExchangeGateio">Gate.io</label>
+                            </div>
+                            <!-- NEW EXCHANGES ADDED FOR REAL-TIME ANALYSIS -->
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input rt-exchange-checkbox" type="checkbox" id="rtExchangeKucoin" value="kucoin" checked onchange="updateExchangeSelectionRT()">
+                                <label class="form-check-label" for="rtExchangeKucoin">KuCoin</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input rt-exchange-checkbox" type="checkbox" id="rtExchangeHuobi" value="huobi" checked onchange="updateExchangeSelectionRT()">
+                                <label class="form-check-label" for="rtExchangeHuobi">Huobi</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input rt-exchange-checkbox" type="checkbox" id="rtExchangeKraken" value="kraken" checked onchange="updateExchangeSelectionRT()">
+                                <label class="form-check-label" for="rtExchangeKraken">Kraken</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input rt-exchange-checkbox" type="checkbox" id="rtExchangeBitget" value="bitget" checked onchange="updateExchangeSelectionRT()">
+                                <label class="form-check-label" for="rtExchangeBitget">Bitget</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input rt-exchange-checkbox" type="checkbox" id="rtExchangeMexc" value="mexc" checked onchange="updateExchangeSelectionRT()">
+                                <label class="form-check-label" for="rtExchangeMexc">MEXC</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input rt-exchange-checkbox" type="checkbox" id="rtExchangeCoinbase" value="coinbase" checked onchange="updateExchangeSelectionRT()">
+                                <label class="form-check-label" for="rtExchangeCoinbase">Coinbase</label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Analysis Parameters:</label>
+                        <div class="row mt-2">
+                            <div class="col-6">
+                                <label class="small">Time Window (seconds):</label>
+                                <input type="number" id="rtTimeWindow" class="form-control form-control-sm" value="60" min="10" max="300">
+                            </div>
+                            <div class="col-6">
+                                <label class="small">Prediction Horizon:</label>
+                                <select id="rtPredictionHorizon" class="form-select form-select-sm">
+                                    <option value="1">1 minute</option>
+                                    <option value="5" selected>5 minutes</option>
+                                    <option value="15">15 minutes</option>
+                                    <option value="30">30 minutes</option>
+                                    <option value="60">1H</option>
+                                    <option value="120">2H</option>
+                                    <option value="180">3H</option>
+                                    <option value="180">3H</option>
+                                    <option value="240">4H</option>
+                                    <option value="360">6H</option>
+                                    <option value="480">8H</option>
+                                    <option value="600">10H</option>
+                                    <option value="720">1D</option>
+                                    <option value="10080">1W</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="row mt-3">
+                    <div class="col-md-12">
+                        <div class="alert alert-info py-2 mb-0 d-flex justify-content-between align-items-center">
+                            <div>
+                                <small id="rtExchangeStatusText">Selected: All 10 exchanges</small>
+                            </div>
+                            <div>
+                                <button class="btn btn-sm btn-primary" onclick="runRealTimeAnalysis()">
+                                    <span class="spinner-border spinner-border-sm d-none" id="rtSpinner"></span>
+                                    Run Analysis
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Main Analysis Dashboard - COMPACTED -->
+            <div class="row mb-3">
+                <!-- Price & Volume Card -->
+                <div class="col-md-4 mb-3">
+                    <div class="card rt-card h-100">
+                        <div class="card-body">
+                            <p class="rt-label">Current Price</p>
+                            <p class="rt-metric" id="rtCurrentPrice">--</p>
+                            <p class="rt-change-positive mb-0" id="rtPriceChange">--</p>
+                            <hr class="my-2">
+                            <p class="rt-label">24h Volume</p>
+                            <p class="rt-metric" id="rt24hVolume">--</p>
+                            <p class="rt-timestamp" id="rtLastUpdate">--</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Order Flow Card -->
+                <div class="col-md-4 mb-3">
+                    <div class="card rt-card h-100">
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-6">
+                                    <p class="rt-label">Buy Pressure</p>
+                                    <p class="rt-metric" id="rtBuyPressure">--</p>
+                                    <p class="rt-label">Bid Depth</p>
+                                    <p class="rt-metric" id="rtBidDepth">--</p>
+                                </div>
+                                <div class="col-6">
+                                    <p class="rt-label">Sell Pressure</p>
+                                    <p class="rt-metric" id="rtSellPressure">--</p>
+                                    <p class="rt-label">Ask Depth</p>
+                                    <p class="rt-metric" id="rtAskDepth">--</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Trading Signal Card -->
+                <div class="col-md-4 mb-3">
+                    <div class="card signal-card h-100" id="rtSignalCard">
+                        <div class="card-body text-center">
+                            <h6 class="card-title">Trading Signal</h6>
+                            <div class="display-4 mb-2" id="rtSignalIcon">📊</div>
+                            <h5 class="mb-1" id="rtSignalText">ANALYZING</h5>
+                            <p class="text-muted mb-1 small" id="rtSignalConfidence">Confidence: --%</p>
+                            <p class="mb-0 small" id="rtSignalReason">Waiting for analysis...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Order Imbalance Bar -->
+            <div class="card mb-3">
+                <div class="card-body">
+                    <h6 class="card-title">Order Flow Imbalance</h6>
+                    <div class="progress" style="height: 25px;">
+                        <div id="rtImbalanceBar" class="progress-bar" role="progressbar" style="width: 50%">
+                            <span class="fw-bold" id="rtImbalanceValue">0.00%</span>
+                        </div>
+                    </div>
+                    <div class="d-flex justify-content-between mt-1">
+                        <small class="text-danger">Strong Sell</small>
+                        <small class="text-muted">Neutral</small>
+                        <small class="text-success">Strong Buy</small>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Charts Section - IMPROVED LAYOUT -->
+            <div class="row mb-3">
+                <div class="col-md-12 mb-3">
+                    <div class="card h-50">
+                        <div class="card-header">Market Depth Visualization</div>
+                        <div class="card-body p-2">
+                            <canvas id="marketDepthChart" class="market-depth-chart w-100"></canvas>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="col-md-12 mb-3">
+                    <div class="card h-100">
+                        <div class="card-header">Price Prediction</div>
+                        <div class="card-body">
+                            <div class="row text-center mb-2">
+                                <div class="col-6">
+                                    <p class="rt-label">Next 5min</p>
+                                    <p class="rt-metric" id="rtPred5min">--</p>
+                                    <p class="rt-change-positive small" id="rtPred5minChange">--</p>
+                                </div>
+                                <div class="col-6">
+                                    <p class="rt-label">Next 15min</p>
+                                    <p class="rt-metric" id="rtPred15min">--</p>
+                                    <p class="rt-change-positive small" id="rtPred15minChange">--</p>
+                                </div>
+                            </div>
+                            <hr class="my-2">
+                            <div class="mb-2">
+                                <p class="rt-label mb-1">Support</p>
+                                <p class="rt-metric text-success small" id="rtSupport">--</p>
+                            </div>
+                            <div>
+                                <p class="rt-label mb-1">Resistance</p>
+                                <p class="rt-metric text-danger small" id="rtResistance">--</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Trade Flow Analysis - COMPACTED -->
+            <div class="card mb-3">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span>Trade Flow Analysis</span>
+                    <div class="small text-muted">Last 10 minutes</div>
+                </div>
+                <div class="card-body p-2">
+                    <div class="row">
+                        <div class="col-md-8">
+                            <canvas id="tradeFlowChart" class="trade-flow-chart w-100"></canvas>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="row h-100 align-items-center">
+                                <div class="col-6 text-center">
+                                    <p class="rt-label">Buy Trades</p>
+                                    <p class="rt-metric text-success" id="rtBuyTrades">--</p>
+                                </div>
+                                <div class="col-6 text-center">
+                                    <p class="rt-label">Sell Trades</p>
+                                    <p class="rt-metric text-danger" id="rtSellTrades">--</p>
+                                </div>
+                                <div class="col-12 text-center mt-2">
+                                    <p class="rt-label">Buy/Sell Ratio</p>
+                                    <p class="rt-metric" id="rtTradeRatio">--</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Order Book Heatmap - COMPACTED -->
+            <div class="card mb-3">
+                <div class="card-header">Order Book Heatmap (Top 8 Levels)</div>
+                <div class="card-body p-2">
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered compact-table mb-0" id="orderBookHeatmap">
+                            <thead>
+                                <tr>
+                                    <th class="text-center">Level</th>
+                                    <th class="text-center">Bid Size</th>
+                                    <th class="text-center">Price</th>
+                                    <th class="text-center">Ask Size</th>
+                                </tr>
+                            </thead>
+                            <tbody id="heatmapBody">
+                                <!-- Will be populated by JavaScript -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Market Sentiment - COMPACTED -->
+            <div class="card mb-3">
+                <div class="card-header">Market Sentiment Analysis</div>
+                <div class="card-body p-2">
+                    <div class="row">
+                        <div class="col-md-3 text-center">
+                            <p class="rt-label">Overall Sentiment</p>
+                            <div class="display-4 mb-1" id="rtSentimentIcon">😐</div>
+                            <h5 id="rtSentimentText">Neutral</h5>
+                        </div>
+                        <div class="col-md-9">
+                            <div class="row">
+                                <div class="col-4 text-center">
+                                    <div class="card h-100">
+                                        <div class="card-body p-2">
+                                            <p class="rt-label">Volume Trend</p>
+                                            <p class="rt-metric" id="rtVolumeTrend">--</p>
+                                            <p class="rt-timestamp">Last 5min</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-4 text-center">
+                                    <div class="card h-100">
+                                        <div class="card-body p-2">
+                                            <p class="rt-label">Volatility</p>
+                                            <p class="rt-metric" id="rtVolatility">--</p>
+                                            <p class="rt-timestamp">ATR (5min)</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-4 text-center">
+                                    <div class="card h-100">
+                                        <div class="card-body p-2">
+                                            <p class="rt-label">Momentum</p>
+                                            <p class="rt-metric" id="rtMomentum">--</p>
+                                            <p class="rt-timestamp">Rate of Change</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Analysis Log - COMPACTED -->
+            <div class="card">
+                <div class="card-header">Recent Analysis Log</div>
+                <div class="card-body p-2">
+                    <div class="table-responsive">
+                        <table class="table table-sm compact-table mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Time</th>
+                                    <th>Signal</th>
+                                    <th>Price</th>
+                                    <th>Imbalance</th>
+                                    <th>Volume</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="rtAnalysisLog">
+                                <tr>
+                                    <td colspan="6" class="text-center text-muted">No analysis data yet</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- PREDICTIONS - FIXED VERSION -->
+        <div class="tab-pane fade" id="predictions">
+            <h4 class="mb-3">Multi-Timeframe Predictions & Technical Analysis</h4>
+            
+            <!-- Symbol and Controls -->
+            <div class="row mb-4">
+                <div class="col-md-4">
+                    <label class="form-label fw-bold">Prediction Symbol</label>
+                    <input id="predictionSymbol" class="form-control" value="BTC/USDT" placeholder="e.g. ETH/USDT">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label fw-bold">Primary Timeframe</label>
+                    <select id="primaryTimeframe" class="form-select">
+                        <option value="1h">1 Hour</option>
+                        <option value="4h" selected>4 Hours</option>
+                        <option value="1d">1 Day</option>
+                        <option value="1w">1 Week</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label fw-bold">Analysis Depth</label>
+                    <select id="analysisDepth" class="form-select">
+                        <option value="50">50 Candles</option>
+                        <option value="100" selected>100 Candles</option>
+                        <option value="200">200 Candles</option>
+                        <option value="500">500 Candles</option>
+                    </select>
+                </div>
+                <div class="col-md-2 d-flex align-items-end">
+                    <button class="btn btn-primary w-100" onclick="runMultiTimeframeAnalysis()">Analyze All</button>
+                </div>
+            </div>
+            
+            <!-- Main Prediction Card -->
+            <div class="card mb-4 border-primary">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0">Overall Market Prediction & Signals</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div id="mainPredictionSignal" class="text-center p-3 rounded mb-3">
+                                <h3 class="mb-2">LOADING...</h3>
+                                <p class="mb-1">Overall Trend: <span id="overallTrend">-</span></p>
+                                <p class="mb-1">Confidence: <span id="overallConfidence">-</span>%</p>
+                                <p class="mb-0">Recommended Action: <span id="recommendedAction">-</span></p>
+                            </div>
+                            
+                            <div class="row">
+                                <div class="col-6">
+                                    <div class="card h-100">
+                                        <div class="card-header bg-light">Next 1H Prediction</div>
+                                        <div class="card-body text-center">
+                                            <h4 id="pred1hChange" class="mb-1">-</h4>
+                                            <small id="pred1hSignal" class="text-muted">Signal: -</small>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-6">
+                                    <div class="card h-100">
+                                        <div class="card-header bg-light">Next 4H Prediction</div>
+                                        <div class="card-body text-center">
+                                            <h4 id="pred4hChange" class="mb-1">-</h4>
+                                            <small id="pred4hSignal" class="text-muted">Signal: -</small>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <div class="card h-100">
+                                <div class="card-header bg-light">Technical Summary</div>
+                                <div class="card-body">
+                                    <div class="row">
+                                        <div class="col-6">
+                                            <p class="mb-1"><strong>RSI Status:</strong> <span id="rsiStatus">-</span></p>
+                                            <p class="mb-1"><strong>MACD:</strong> <span id="macdStatus">-</span></p>
+                                            <p class="mb-1"><strong>Trend:</strong> <span id="trendStatus">-</span></p>
+                                        </div>
+                                        <div class="col-6">
+                                            <p class="mb-1"><strong>Support:</strong> <span id="supportLevel">-</span></p>
+                                            <p class="mb-1"><strong>Resistance:</strong> <span id="resistanceLevel">-</span></p>
+                                            <p class="mb-1"><strong>Volatility:</strong> <span id="volatilityStatus">-</span></p>
+                                        </div>
+                                    </div>
+                                    <hr>
+                                    <p class="mb-1"><strong>Key Levels:</strong></p>
+                                    <div class="small">
+                                        <p class="mb-1">Immediate Support: <span id="immediateSupport">-</span></p>
+                                        <p class="mb-1">Immediate Resistance: <span id="immediateResistance">-</span></p>
+                                        <p class="mb-0">Stop Loss Zone: <span id="stopLossZone">-</span></p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Chart Visualization -->
+            <div class="card mb-4">
+                <div class="card-header">Live Chart Visualization</div>
+                <div class="card-body p-0">
+                    <!-- TradingView Widget -->
+                    <div class="tradingview-widget-container" style="height: 400px;">
+                        <div id="tradingview_chart" style="height: 100%; width: 100%;"></div>
+                        <div class="tradingview-widget-copyright">
+                            <a href="https://www.tradingview.com/" rel="noopener nofollow" target="_blank">
+                                <span class="blue-text">Track all markets on TradingView</span>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Multi-Timeframe Analysis Table -->
+            <div class="card">
+                <div class="card-header">Detailed Timeframe Analysis</div>
+                <div class="card-body p-0">
+                    <table class="table table-bordered table-hover mb-0">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>Timeframe</th>
+                                <th>Predicted %</th>
+                                <th>Signal</th>
+                                <th>Confidence</th>
+                                <th>RSI</th>
+                                <th>MACD</th>
+                                <th>Support</th>
+                                <th>Resistance</th>
+                                <th>Recommendation</th>
+                            </tr>
+                        </thead>
+                        <tbody id="timeframeAnalysisBody">
+                            <tr><td colspan="9" class="text-center text-muted">Run analysis to see predictions</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            
+            <!-- Prediction History -->
+            <div class="card mt-4">
+                <div class="card-header">Recent Predictions Log</div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-sm table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Time</th>
+                                    <th>Symbol</th>
+                                    <th>Timeframe</th>
+                                    <th>Prediction</th>
+                                    <th>Actual</th>
+                                    <th>Accuracy</th>
+                                    <th>Signal</th>
+                                </tr>
+                            </thead>
+                            <tbody id="predictionHistoryBody">
+                                <tr><td colspan="7" class="text-center text-muted">No prediction history yet</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- SYSTEM -->
+        <div class="tab-pane fade" id="system">
+            <div class="text-center my-3">
+                <h4>Binance Symbol Sync</h4>
+                <p>Fetch all Binance spot symbols via ccxt and store only new ones in the database.</p>
+                <button class="btn btn-secondary" onclick="syncBinanceSymbols()">Sync Binance Symbols</button>
+                <div id="symbolSyncAlert" class="mt-3"></div>
+            </div>
+            <table class="table table-sm table-bordered w-50 mx-auto">
+                <tbody>
+                    <tr><th>Total markets</th><td id="syncTotal">-</td></tr>
+                    <tr><th>Already in DB</th><td id="syncExisting">-</td></tr>
+                    <tr><th>Newly added</th><td id="syncNew">-</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- SYMBOLS -->
+        <div class="tab-pane fade" id="symbols">
+            <div class="row g-3 mb-3">
+                <div class="col-md-6">
+                    <input id="symbolSearch" class="form-control" placeholder="Search e.g. USDT, USDC, BTC, ETH, BTC/USDT">
+                </div>
+                <div class="col-md-3">
+                    <button class="btn btn-primary w-100" onclick="searchSymbols()">Search</button>
+                </div>
+                <div class="col-md-3">
+                    <button class="btn btn-success w-100" onclick="exportSymbolsExcel()">Export Excel</button>
+                </div>
+            </div>
+            <div id="symbolsAlert"></div>
+            <table class="table table-bordered table-sm">
+                <thead class="table-dark">
+                    <tr>
+                        <th>#</th><th>Symbol</th><th>Base</th><th>Quote</th><th>Active</th><th>Added At</th>
+                    </tr>
+                </thead>
+                <tbody id="symbolsBody"></tbody>
+            </table>
+        </div>
+
+        <!-- TRAIN BOT -->
+        <div class="tab-pane fade" id="trainBot">
+            <h4 class="mb-3">Train Prediction Model</h4>
+            <div class="row g-3 mb-3">
+                <div class="col-md-4">
+                    <label class="form-label">Symbol</label>
+                    <input id="trainSymbol" class="form-control" value="BTC/USDT" placeholder="e.g. ETH/USDT">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Timeframes (multi-select)</label>
+                    <select id="trainTimeframes" class="form-select" multiple>
+                        <option value="1m">1m</option>
+                        <option value="5m">5m</option>
+                        <option value="15m">15m</option>
+                        <option value="1h">1h</option>
+                        <option value="4h" selected>4h</option>
+                        <option value="1d">1d</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Look Back</label>
+                    <input id="trainLookBack" type="number" class="form-control" value="50" min="10" max="200">
+                </div>
+                <div class="col-md-2 d-flex align-items-end">
+                    <button class="btn btn-primary w-100" onclick="trainBot()">Train Model</button>
+                </div>
+            </div>
+            <div id="trainAlert"></div>
+            <p class="text-muted">Trains patterns and weights from DB data. Run once per symbol/timeframe or after new data.</p>
+        </div>
+
+        <!-- PREDICT CANDLE -->
+        <div class="tab-pane fade" id="predictCandle">
+            <h4 class="mb-3">Predict Next Candle</h4>
+            <div class="row g-3 mb-3">
+                <div class="col-md-3">
+                    <label class="form-label">Symbol</label>
+                    <input id="predictSymbol" class="form-control" value="BTC/USDT" placeholder="e.g. ETH/USDT">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Timeframe</label>
+                    <select id="predictTimeframe" class="form-select">
+                        <option value="1m">1m</option>
+                        <option value="5m">5m</option>
+                        <option value="15m">15m</option>
+                        <option value="1h">1h</option>
+                        <option value="4h" selected>4h</option>
+                        <option value="1d">1d</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Look Back</label>
+                    <input id="predictLookBack" type="number" class="form-control" value="50" min="10" max="200">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Expander</label>
+                    <input id="predictExpander" type="number" class="form-control" value="1.33" min="1.0" max="2.0" step="0.01">
+                </div>
+                <div class="col-md-2 d-flex align-items-end">
+                    <button class="btn btn-success w-100" onclick="predictCandle()">Predict</button>
+                </div>
+            </div>
+            <div id="predictAlert"></div>
+            <div id="predictResults" class="border p-3 bg-light rounded mt-3">
+                <p class="text-muted">Run prediction to see results here (predicted % change, high/low bounds, confidence).</p>
+            </div>
+        </div>
+        <!-- Crypto Volumne and Patterns
+          Start -->
+                  <!-- CANDLE PATTERN & VOLUME SCANNER -->
+        <!-- CANDLE PATTERN & VOLUME SCANNER - UPDATED -->
+<div class="tab-pane fade" id="patternScanner">
+    <h4 class="mb-3">🎯 Binance Pattern & Volume Scanner (All Pairs)</h4>
+    
+    <!-- Database Update Section -->
+    <div class="card mb-4 border-primary">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0">1. Update Binance Pairs Database</h5>
+        </div>
+        <div class="card-body">
+            <p class="mb-3">First, fetch all Binance spot and futures pairs from the exchange:</p>
+            <div class="row">
+                <div class="col-md-6">
+                    <button class="btn btn-success w-100" onclick="updateBinancePairs()" id="updatePairsBtn">
+                        <span class="spinner-border spinner-border-sm d-none" id="updatePairsSpinner"></span>
+                        Fetch All Binance Pairs
+                    </button>
+                </div>
+                <div class="col-md-6">
+                    <button class="btn btn-info w-100" onclick="getBinancePairsStatus()">
+                        Check Database Status
+                    </button>
+                </div>
+            </div>
+            <div id="pairsUpdateStatus" class="mt-3"></div>
+        </div>
+    </div>
+    
+    <!-- Scanner Configuration -->
+    <div class="card mb-4">
+        <div class="card-header bg-success text-white">
+            <h5 class="mb-0">2. Scanner Configuration</h5>
+        </div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-3">
+                    <label class="form-label">Pair Type</label>
+                    <select id="scanPairType" class="form-select">
+                        <option value="spot" selected>Spot</option>
+                        <option value="future">Futures</option>
+                        <option value="all">All</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Timeframe</label>
+                    <select id="scanTimeframe" class="form-select">
+                        <option value="5m">5 Minutes</option>
+                        <option value="15m" selected>15 Minutes</option>
+                        <option value="1h">1 Hour</option>
+                        <option value="4h">4 Hours</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Volume Threshold</label>
+                    <div class="input-group">
+                        <input type="number" id="volumeThreshold" class="form-control" value="2.0" step="0.1" min="1.0" max="10.0">
+                        <span class="input-group-text">x</span>
+                    </div>
+                    <small class="text-muted">Min volume increase (2.0 = 200%)</small>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Max Pairs</label>
+                    <input type="number" id="maxPairs" class="form-control" value="100" min="10" max="500">
+                </div>
+            </div>
+            
+            <div class="row mt-3">
+                <div class="col-md-4">
+                    <label class="form-label">Quote Asset</label>
+                    <select id="quoteAsset" class="form-select">
+                        <option value="USDT" selected>USDT</option>
+                        <option value="BTC">BTC</option>
+                        <option value="ETH">ETH</option>
+                        <option value="BNB">BNB</option>
+                        <option value="">All Quotes</option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Delay (ms)</label>
+                    <input type="number" id="scanDelay" class="form-control" value="100" min="50" max="1000">
+                    <small class="text-muted">Delay between requests to avoid rate limits</small>
+                </div>
+                <div class="col-md-4 d-flex align-items-end">
+                    <button class="btn btn-warning w-100" onclick="scanAllPairs()" id="scanAllBtn">
+                        <span class="spinner-border spinner-border-sm d-none" id="scanAllSpinner"></span>
+                        Start Scan
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Continuous Scanning -->
+    <div class="card mb-4">
+        <div class="card-header bg-info text-white">
+            <h5 class="mb-0">3. Continuous Scanning</h5>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-4">
+                    <label class="form-label">Scan Interval (minutes)</label>
+                    <input type="number" id="scanInterval" class="form-control" value="5" min="1" max="60">
+                </div>
+                <div class="col-md-4 d-flex align-items-end">
+                    <button class="btn btn-success w-100" onclick="startContinuousScan()" id="continuousScanBtn">
+                        Start Continuous Scan
+                    </button>
+                </div>
+                <div class="col-md-4 d-flex align-items-end">
+                    <button class="btn btn-danger w-100" onclick="stopContinuousScan()" id="stopScanBtn">
+                        Stop Scanning
+                    </button>
+                </div>
+            </div>
+            <div id="continuousScanStatus" class="mt-3"></div>
+        </div>
+    </div>
+    
+    <!-- Results Display -->
+    <div id="scanResults" class="mb-4">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Scan Results</h5>
+                <div>
+                    <span class="badge bg-primary me-2" id="totalScanned">0</span>
+                    <span class="badge bg-success me-2" id="volumeAlerts">0</span>
+                    <span class="badge bg-warning" id="patternAlerts">0</span>
+                </div>
+            </div>
+            <div class="card-body">
+                <!-- Volume Alerts -->
+                <div id="volumeAlertsSection" class="mb-4 d-none">
+                    <h6 class="text-danger">🚨 Volume Spike Alerts</h6>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover">
+                            <thead class="table-danger">
+                                <tr>
+                                    <th>Symbol</th>
+                                    <th>Type</th>
+                                    <th>Volume Ratio</th>
+                                    <th>Current Volume</th>
+                                    <th>Timeframe</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="volumeAlertsBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+                
+                <!-- Pattern Alerts -->
+                <div id="patternAlertsSection" class="mb-4 d-none">
+                    <h6 class="text-warning">🎯 Pattern Alerts</h6>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover">
+                            <thead class="table-warning">
+                                <tr>
+                                    <th>Symbol</th>
+                                    <th>Type</th>
+                                    <th>Pattern</th>
+                                    <th>Price Change</th>
+                                    <th>Current Price</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="patternAlertsBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+                
+                <!-- All Results -->
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Symbol</th>
+                                <th>Type</th>
+                                <th>Price</th>
+                                <th>Change</th>
+                                <th>Volume Ratio</th>
+                                <th>Patterns</th>
+                                <th>Volume Trend</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="scanResultsBody">
+                            <tr>
+                                <td colspan="9" class="text-center text-muted">
+                                    Run a scan to see results
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Statistics Dashboard -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5 class="mb-0">Statistics Dashboard</h5>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-3 text-center">
+                    <div class="card h-100">
+                        <div class="card-body">
+                            <h6 class="card-title">Total Scanned</h6>
+                            <div class="display-4" id="statTotalScanned">0</div>
+                            <small class="text-muted">pairs</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3 text-center">
+                    <div class="card h-100">
+                        <div class="card-body">
+                            <h6 class="card-title">Volume Spikes</h6>
+                            <div class="display-4 text-success" id="statVolumeSpikes">0</div>
+                            <small class="text-muted">> 200% increase</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3 text-center">
+                    <div class="card h-100">
+                        <div class="card-body">
+                            <h6 class="card-title">Patterns Found</h6>
+                            <div class="display-4 text-warning" id="statPatternsFound">0</div>
+                            <small class="text-muted">candle patterns</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3 text-center">
+                    <div class="card h-100">
+                        <div class="card-body">
+                            <h6 class="card-title">Success Rate</h6>
+                            <div class="display-4 text-info" id="statSuccessRate">0%</div>
+                            <small class="text-muted">successful scans</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Real-time Log -->
+    <div class="card">
+        <div class="card-header">
+            <h5 class="mb-0">Scan Log</h5>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-sm">
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Symbol</th>
+                            <th>Status</th>
+                            <th>Volume Ratio</th>
+                            <th>Pattern</th>
+                            <th>Details</th>
+                        </tr>
+                    </thead>
+                    <tbody id="scanLogBody">
+                        <tr>
+                            <td colspan="6" class="text-center text-muted">No scan data yet</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+        <!-- End -->
+    </div>
+</div>
+
+
+
+
+<script src="app.js"></script>
+</body>
+</html>

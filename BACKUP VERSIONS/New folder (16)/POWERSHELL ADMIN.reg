@@ -1,0 +1,9 @@
+Windows Registry Editor Version 5.00
+
+[HKEY_CLASSES_ROOT\Directory\Background\shell\runas]
+@="Open PowerShell as Admin here"
+"Icon"="powershell.exe"
+"NoWorkingDir"=""
+
+[HKEY_CLASSES_ROOT\Directory\Background\shell\runas\command]
+@="powershell.exe -NoProfile -ExecutionPolicy Bypass -Command \"Start-Process powershell -Verb RunAs -ArgumentList '-NoProfile -ExecutionPolicy Bypass -NoExit -Command cd \\\"%V\\\"'\""

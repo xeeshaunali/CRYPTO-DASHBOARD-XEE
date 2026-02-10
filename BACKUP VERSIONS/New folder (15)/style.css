@@ -1,0 +1,210 @@
+        .positive { color: green; font-weight: bold; }
+        .negative { color: red; font-weight: bold; }
+        .signal-bullish { color: #0f5132; font-weight: bold; background-color: #d1e7dd; }
+        .signal-bearish { color: #842029; font-weight: bold; background-color: #f8d7da; }
+        .signal-watch { color: #664d03; font-weight: bold; background-color: #fff3cd; }
+        .imbalance-pos { color: green; font-weight: bold; }
+        .imbalance-neg { color: red; font-weight: bold; }
+        table { font-size: 0.9em; }
+        .card { margin-bottom: 1rem; }
+        .exchange-controls { 
+            background-color: #f8f9fa; 
+            padding: 15px; 
+            border-radius: 5px; 
+            margin-bottom: 20px; 
+            border: 1px solid #dee2e6;
+        }
+        .form-check-inline { margin-right: 15px; }
+        
+        /* Enhanced Prediction Styles */
+        .signal-strong-bullish { 
+            color: #0d6efd; 
+            background-color: #d1e7ff; 
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        .signal-bullish { 
+            color: #198754; 
+            background-color: #d1e7dd; 
+            padding: 5px 10px;
+            border-radius: 4px;
+        }
+        .signal-bearish { 
+            color: #dc3545; 
+            background-color: #f8d7da; 
+            padding: 5px 10px;
+            border-radius: 4px;
+        }
+        .signal-neutral { 
+            color: #6c757d; 
+            background-color: #f8f9fa; 
+            padding: 5px 10px;
+            border-radius: 4px;
+        }
+        .prediction-high { color: #198754; font-weight: bold; }
+        .prediction-medium { color: #fd7e14; font-weight: bold; }
+        .prediction-low { color: #dc3545; font-weight: bold; }
+        .chart-container { height: 400px; }
+        .progress { height: 20px; }
+        
+        /* Real-Time Analysis Styles - UPDATED */
+        .rt-card {
+            border-left: 4px solid #0d6efd;
+            transition: all 0.3s ease;
+            min-height: 120px;
+        }
+        .rt-card:hover {
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            transform: translateY(-2px);
+        }
+        .rt-metric {
+            font-size: 1.5rem;
+            font-weight: bold;
+            margin-bottom: 0;
+        }
+        .rt-label {
+            color: #6c757d;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .rt-change-positive {
+            color: #198754;
+            font-size: 1rem;
+            font-weight: bold;
+        }
+        .rt-change-negative {
+            color: #dc3545;
+            font-size: 1rem;
+            font-weight: bold;
+        }
+        .rt-timestamp {
+            font-size: 0.75rem;
+            color: #6c757d;
+            font-style: italic;
+        }
+        .market-depth-chart { height: 220px; } /* REDUCED */
+        .trade-flow-chart { height: 180px; } /* REDUCED FROM 250px */
+        .order-imbalance-chart { height: 200px; }
+        
+        /* Heatmap Styles */
+        .heatmap-cell {
+            width: 100%;
+            height: 25px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 3px;
+            font-weight: bold;
+            font-size: 0.75rem;
+            transition: transform 0.2s;
+        }
+        .heatmap-cell:hover {
+            transform: scale(1.05);
+            z-index: 10;
+        }
+        
+        /* Animated indicators */
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.7; }
+            100% { opacity: 1; }
+        }
+        .pulse {
+            animation: pulse 2s infinite;
+        }
+        
+        /* Trading Signals */
+        .signal-card {
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .signal-card.buy {
+            border-top: 4px solid #198754;
+            background: linear-gradient(135deg, #d1e7dd 0%, #e8f5e9 100%);
+        }
+        .signal-card.sell {
+            border-top: 4px solid #dc3545;
+            background: linear-gradient(135deg, #f8d7da 0%, #ffebee 100%);
+        }
+        .signal-card.neutral {
+            border-top: 4px solid #6c757d;
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+        }
+        
+        /* Order Book Levels */
+        .order-level {
+            padding: 5px 10px;
+            margin: 2px 0;
+            border-radius: 3px;
+            font-family: monospace;
+            font-size: 0.85rem;
+        }
+        .order-level.bid {
+            background: linear-gradient(to left, rgba(25, 135, 84, 0.1), rgba(25, 135, 84, 0.05));
+            border-left: 3px solid #198754;
+        }
+        .order-level.ask {
+            background: linear-gradient(to right, rgba(220, 53, 69, 0.1), rgba(220, 53, 69, 0.05));
+            border-right: 3px solid #dc3545;
+        }
+        
+        /* Tooltip Styles */
+        .custom-tooltip {
+            position: relative;
+            display: inline-block;
+        }
+        .custom-tooltip .tooltip-text {
+            visibility: hidden;
+            width: 200px;
+            background-color: #333;
+            color: #fff;
+            text-align: center;
+            border-radius: 6px;
+            padding: 5px;
+            position: absolute;
+            z-index: 1000;
+            bottom: 125%;
+            left: 50%;
+            margin-left: -100px;
+            opacity: 0;
+            transition: opacity 0.3s;
+            font-size: 0.8rem;
+        }
+        .custom-tooltip:hover .tooltip-text {
+            visibility: visible;
+            opacity: 1;
+        }
+        
+        /* Compact table styles for Real-Time Analysis */
+        .compact-table {
+            font-size: 0.8rem;
+        }
+        .compact-table th {
+            padding: 4px 8px;
+        }
+        .compact-table td {
+            padding: 4px 8px;
+        }
+        
+        /* Better responsive layout */
+        @media (max-width: 992px) {
+            .rt-metric {
+                font-size: 1.3rem;
+            }
+            .market-depth-chart { height: 200px; }
+            .trade-flow-chart { height: 160px; }
+        }
+        
+        @media (max-width: 768px) {
+            .rt-metric {
+                font-size: 1.2rem;
+            }
+            .market-depth-chart { height: 180px; }
+            .trade-flow-chart { height: 150px; }
+            .rt-card {
+                min-height: 100px;
+            }
+        }
+    

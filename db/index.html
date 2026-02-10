@@ -6,222 +6,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <!-- Bootstrap CSS + JS Bundle (includes Popper) -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <!-- custom css file start -->
+    <link rel="stylesheet" href="style.css">
+    <!-- end -->
+
+    
+    
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <!-- TradingView Widget -->
     <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
     <!-- Chart.js for Real-Time Analysis -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <style>
-        .positive { color: green; font-weight: bold; }
-        .negative { color: red; font-weight: bold; }
-        .signal-bullish { color: #0f5132; font-weight: bold; background-color: #d1e7dd; }
-        .signal-bearish { color: #842029; font-weight: bold; background-color: #f8d7da; }
-        .signal-watch { color: #664d03; font-weight: bold; background-color: #fff3cd; }
-        .imbalance-pos { color: green; font-weight: bold; }
-        .imbalance-neg { color: red; font-weight: bold; }
-        table { font-size: 0.9em; }
-        .card { margin-bottom: 1rem; }
-        .exchange-controls { 
-            background-color: #f8f9fa; 
-            padding: 15px; 
-            border-radius: 5px; 
-            margin-bottom: 20px; 
-            border: 1px solid #dee2e6;
-        }
-        .form-check-inline { margin-right: 15px; }
-        
-        /* Enhanced Prediction Styles */
-        .signal-strong-bullish { 
-            color: #0d6efd; 
-            background-color: #d1e7ff; 
-            padding: 5px 10px;
-            border-radius: 4px;
-            font-weight: bold;
-        }
-        .signal-bullish { 
-            color: #198754; 
-            background-color: #d1e7dd; 
-            padding: 5px 10px;
-            border-radius: 4px;
-        }
-        .signal-bearish { 
-            color: #dc3545; 
-            background-color: #f8d7da; 
-            padding: 5px 10px;
-            border-radius: 4px;
-        }
-        .signal-neutral { 
-            color: #6c757d; 
-            background-color: #f8f9fa; 
-            padding: 5px 10px;
-            border-radius: 4px;
-        }
-        .prediction-high { color: #198754; font-weight: bold; }
-        .prediction-medium { color: #fd7e14; font-weight: bold; }
-        .prediction-low { color: #dc3545; font-weight: bold; }
-        .chart-container { height: 400px; }
-        .progress { height: 20px; }
-        
-        /* Real-Time Analysis Styles - UPDATED */
-        .rt-card {
-            border-left: 4px solid #0d6efd;
-            transition: all 0.3s ease;
-            min-height: 120px;
-        }
-        .rt-card:hover {
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-            transform: translateY(-2px);
-        }
-        .rt-metric {
-            font-size: 1.5rem;
-            font-weight: bold;
-            margin-bottom: 0;
-        }
-        .rt-label {
-            color: #6c757d;
-            font-size: 0.85rem;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-        .rt-change-positive {
-            color: #198754;
-            font-size: 1rem;
-            font-weight: bold;
-        }
-        .rt-change-negative {
-            color: #dc3545;
-            font-size: 1rem;
-            font-weight: bold;
-        }
-        .rt-timestamp {
-            font-size: 0.75rem;
-            color: #6c757d;
-            font-style: italic;
-        }
-        .market-depth-chart { height: 220px; } /* REDUCED */
-        .trade-flow-chart { height: 180px; } /* REDUCED FROM 250px */
-        .order-imbalance-chart { height: 200px; }
-        
-        /* Heatmap Styles */
-        .heatmap-cell {
-            width: 100%;
-            height: 25px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border-radius: 3px;
-            font-weight: bold;
-            font-size: 0.75rem;
-            transition: transform 0.2s;
-        }
-        .heatmap-cell:hover {
-            transform: scale(1.05);
-            z-index: 10;
-        }
-        
-        /* Animated indicators */
-        @keyframes pulse {
-            0% { opacity: 1; }
-            50% { opacity: 0.7; }
-            100% { opacity: 1; }
-        }
-        .pulse {
-            animation: pulse 2s infinite;
-        }
-        
-        /* Trading Signals */
-        .signal-card {
-            border-radius: 8px;
-            overflow: hidden;
-        }
-        .signal-card.buy {
-            border-top: 4px solid #198754;
-            background: linear-gradient(135deg, #d1e7dd 0%, #e8f5e9 100%);
-        }
-        .signal-card.sell {
-            border-top: 4px solid #dc3545;
-            background: linear-gradient(135deg, #f8d7da 0%, #ffebee 100%);
-        }
-        .signal-card.neutral {
-            border-top: 4px solid #6c757d;
-            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-        }
-        
-        /* Order Book Levels */
-        .order-level {
-            padding: 5px 10px;
-            margin: 2px 0;
-            border-radius: 3px;
-            font-family: monospace;
-            font-size: 0.85rem;
-        }
-        .order-level.bid {
-            background: linear-gradient(to left, rgba(25, 135, 84, 0.1), rgba(25, 135, 84, 0.05));
-            border-left: 3px solid #198754;
-        }
-        .order-level.ask {
-            background: linear-gradient(to right, rgba(220, 53, 69, 0.1), rgba(220, 53, 69, 0.05));
-            border-right: 3px solid #dc3545;
-        }
-        
-        /* Tooltip Styles */
-        .custom-tooltip {
-            position: relative;
-            display: inline-block;
-        }
-        .custom-tooltip .tooltip-text {
-            visibility: hidden;
-            width: 200px;
-            background-color: #333;
-            color: #fff;
-            text-align: center;
-            border-radius: 6px;
-            padding: 5px;
-            position: absolute;
-            z-index: 1000;
-            bottom: 125%;
-            left: 50%;
-            margin-left: -100px;
-            opacity: 0;
-            transition: opacity 0.3s;
-            font-size: 0.8rem;
-        }
-        .custom-tooltip:hover .tooltip-text {
-            visibility: visible;
-            opacity: 1;
-        }
-        
-        /* Compact table styles for Real-Time Analysis */
-        .compact-table {
-            font-size: 0.8rem;
-        }
-        .compact-table th {
-            padding: 4px 8px;
-        }
-        .compact-table td {
-            padding: 4px 8px;
-        }
-        
-        /* Better responsive layout */
-        @media (max-width: 992px) {
-            .rt-metric {
-                font-size: 1.3rem;
-            }
-            .market-depth-chart { height: 200px; }
-            .trade-flow-chart { height: 160px; }
-        }
-        
-        @media (max-width: 768px) {
-            .rt-metric {
-                font-size: 1.2rem;
-            }
-            .market-depth-chart { height: 180px; }
-            .trade-flow-chart { height: 150px; }
-            .rt-card {
-                min-height: 100px;
-            }
-        }
-    </style>
+    <script src="app.js"></script>
+    
 </head>
 <body>
 <div class="container mt-4">
@@ -2981,1918 +2779,627 @@ setInterval(() => {
     document.querySelector(`#mainTabs a[href="#${tabId}"]`).addEventListener('shown.bs.tab', updateRealTime);
 });
 
-// === ALL YOUR ORIGINAL FUNCTIONS (unchanged) ===
-async function fetchOHLCV() {
-    const symbol = document.getElementById("symbol").value.trim();
-    const timeframe = document.getElementById("timeframe").value;
-    const fromYear = document.getElementById("fromYear").value;
-    const toYear = document.getElementById("toYear").value;
-    showAlert("ohlcvAlert", "Fetching from Binance...", "info");
-    try {
-        const res = await fetch(API + "/fetch_data", {
-            method:"POST",
-            headers:{"Content-Type":"application/json"},
-            body: JSON.stringify({symbol, timeframe, from_year: fromYear, to_year: toYear})
-        });
-        const json = await res.json();
-        if (json.success) {
-            showAlert("ohlcvAlert", json.message, "success");
-            displayOHLCV(json.data);
-        } else {
-            showAlert("ohlcvAlert", json.error || "Failed");
-        }
-    } catch(e) {
-        showAlert("ohlcvAlert", "Error: "+e.message);
-    }
-}
 
-async function loadFromDB() {
-    const symbol = document.getElementById("symbol").value.trim().toUpperCase().replace(/[-_]/g, '/');
-    const timeframe = document.getElementById("timeframe").value;
-    const fromYear = document.getElementById("fromYear").value;
-    const toYear = document.getElementById("toYear").value;
 
-    let alertMsg = `Loading from DB: ${symbol} ${timeframe}`;
-    if (fromYear) alertMsg += ` from ${fromYear}`;
-    if (toYear) alertMsg += ` to ${toYear}`;
-    showAlert("ohlcvAlert", alertMsg, "info");
 
-    try {
-        const payload = { symbol, timeframe };
-        if (fromYear) payload.from_year = fromYear;
-        if (toYear) payload.to_year = toYear;
 
-        const res = await fetch(API + "/fetch_from_db", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload)
-        });
+// // === CANDLE PATTERN & VOLUME SCANNER FUNCTIONS ===
+// let volumeChart = null;
+// let realTimeMonitoring = false;
+// let monitoringInterval = null;
 
-        const json = await res.json();
-        if (json.success) {
-            showAlert("ohlcvAlert", `Loaded ${json.data.length} rows from DB`, "success");
-            displayOHLCV(json.data);
-        } else {
-            showAlert("ohlcvAlert", json.error || "No data in database for selected range", "warning");
-        }
-    } catch (e) {
-        showAlert("ohlcvAlert", "Error: " + e.message, "danger");
-    }
-}
-
-function displayOHLCV(rows) {
-    const tbody = document.getElementById("ohlcvBody");
-    tbody.innerHTML = "";
-    // Sort rows descending by time (newest first)
-    rows.sort((a, b) => new Date(b["Time (UTC)"] || b.time_utc) - new Date(a["Time (UTC)"] || a.time_utc));
-    rows.forEach((r, i) => {
-        const previousVol = (i < rows.length - 1) ? Number(rows[i + 1].volume || rows[i + 1].Volume) : null;
-        const currentVol = Number(r.volume || r.Volume);
-        const diff = previousVol !== null ? currentVol - previousVol : null;
-        let volChangeHtml = 'N/A';
-        if (diff !== null) {
-            const className = diff > 0 ? 'positive' : 'negative';
-            const sign = diff > 0 ? '+' : '';
-            volChangeHtml = `<span class="${className}">${sign}${diff.toLocaleString(undefined, {maximumFractionDigits: 2})}</span>`;
-        }
-        const tr = document.createElement("tr");
-        tr.innerHTML = `
-            <td>${i+1}</td>
-            <td>${r.time_utc || r["Time (UTC)"]}</td>
-            <td>${Number(r.open || r.Open).toFixed(4)}</td>
-            <td>${Number(r.high || r.High).toFixed(4)}</td>
-            <td>${Number(r.low || r.Low).toFixed(4)}</td>
-            <td>${Number(r.close || r.Close).toFixed(4)}</td>
-            <td>${currentVol.toLocaleString()}</td>
-            <td>${volChangeHtml}</td>
-        `;
-        tbody.appendChild(tr);
-    });
-}
-
-async function analyzeSymbol() {
-    const symbol = document.getElementById("signalSymbol").value.trim();
-    const timeframe = document.getElementById("signalTimeframe").value;
-    if (!symbol) {
-        showAlert("signalAlert", "Please enter a symbol");
-        return;
-    }
-    showAlert("signalAlert", `Analyzing ${symbol} ${timeframe}...`, "info");
-    try {
-        const res = await fetch(API + "/analyze_symbol", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ symbol, timeframe })
-        });
+// async function scanCandlePatterns() {
+//     const spinner = document.getElementById("scanSpinner");
+//     const button = spinner.parentElement;
+    
+//     // Show loading state
+//     spinner.classList.remove("d-none");
+//     button.disabled = true;
+    
+//     try {
+//         const timeframe = document.getElementById("scanTimeframe").value;
+//         const volumeThreshold = parseFloat(document.getElementById("volumeThreshold").value);
+//         const minVolume = parseFloat(document.getElementById("minVolume").value);
         
-        const json = await res.json();
+//         const res = await fetch(API + "/scan_candle_patterns", {
+//             method: "POST",
+//             headers: { "Content-Type": "application/json" },
+//             body: JSON.stringify({
+//                 timeframe: timeframe,
+//                 volume_threshold: volumeThreshold,
+//                 min_volume: minVolume,
+//                 max_symbols: 50
+//             })
+//         });
         
-        if (!json.success) {
-            showAlert("signalAlert", json.error || "Failed to analyze symbol");
-            return;
-        }
+//         const data = await res.json();
         
-        // Safely handle the response
-        let cls = "signal-neutral";
-        if (json.signal && json.signal.startsWith("STRONG_BULLISH")) cls = "signal-strong-bullish";
-        else if (json.signal && json.signal.startsWith("BULLISH")) cls = "signal-bullish";
-        else if (json.signal && json.signal.startsWith("STRONG_BEARISH") || json.signal.startsWith("BEARISH")) cls = "signal-bearish";
-        else if (json.signal && json.signal.startsWith("WATCH_")) cls = "signal-watch";
+//         if (!data.success) {
+//             throw new Error(data.error || "Scan failed");
+//         }
         
-        const d = json;
-        const ind = d.indicators || {};
-        const c = d.last_candle || {};
+//         // Update results count
+//         document.getElementById("resultCount").textContent = 
+//             `${data.matches} symbols found (scanned ${data.scanned_symbols})`;
         
-        const html = `
-            <p><strong>Symbol:</strong> ${d.symbol || 'N/A'} &nbsp; <strong>Timeframe:</strong> ${d.timeframe || 'N/A'}</p>
-            <p><strong>Last Candle:</strong> ${c.time_utc || 'N/A'} |
-               O: ${c.open ? c.open.toFixed(4) : 'N/A'} H: ${c.high ? c.high.toFixed(4) : 'N/A'}
-               L: ${c.low ? c.low.toFixed(4) : 'N/A'} C: ${c.close ? c.close.toFixed(4) : 'N/A'}
-               Vol: ${c.volume ? c.volume.toLocaleString() : 'N/A'}</p>
-            <p><strong>RSI(14):</strong> ${ind.rsi ? ind.rsi.toFixed(2) : "n/a"} &nbsp;
-               <strong>MACD:</strong> ${ind.macd ? ind.macd.toFixed(4) : "n/a"} &nbsp;
-               <strong>Signal:</strong> ${ind.macd_signal ? ind.macd_signal.toFixed(4) : "n/a"}</p>
-            <p><strong>EMA20:</strong> ${ind.ema20 ? ind.ema20.toFixed(4) : "n/a"} &nbsp;
-               <strong>EMA50:</strong> ${ind.ema50 ? ind.ema50.toFixed(4) : "n/a"} &nbsp;
-               <strong>EMA100:</strong> ${ind.ema100 ? ind.ema100.toFixed(4) : "n/a"} &nbsp;
-               <strong>EMA200:</strong> ${ind.ema200 ? ind.ema200.toFixed(4) : "n/a"}</p>
-            <p class="${cls}"><strong>Signal:</strong> ${d.signal || 'NEUTRAL'} (score ${d.score || 0})</p>
-            <ul>${(d.reasons && Array.isArray(d.reasons) ? d.reasons.map(r => `<li>${r}</li>`).join("") : '<li>No analysis reasons available</li>')}</ul>
-        `;
-        document.getElementById("signalDetails").innerHTML = html;
-        showAlert("signalAlert", "Analysis completed", "success");
-    } catch (e) {
-        console.error("Analyze symbol error:", e);
-        showAlert("signalAlert", "Error: " + e.message);
-    }
-}
+//         // Update results table
+//         updateScanResults(data.results);
+        
+//         // Update volume statistics
+//         updateVolumeStats(data.results);
+        
+//         // Update chart
+//         updateVolumeChart(data.results);
+        
+//         // Populate detailed analysis dropdown
+//         populateSymbolDropdown(data.results);
+        
+//     } catch (error) {
+//         console.error("Scan error:", error);
+//         alert(`Scan failed: ${error.message}`);
+//     } finally {
+//         // Hide loading state
+//         spinner.classList.add("d-none");
+//         button.disabled = false;
+//     }
+// }
 
-async function refreshGainersLosers() {
-    showAlert("gainersAlert", "Fetching from Binance...", "info");
-    showAlert("losersAlert", "Fetching from Binance...", "info");
-    try {
-        const res = await fetch(API + "/fetch_gainers_losers");
-        const json = await res.json();
-        if (json.success) {
-            showAlert("gainersAlert", json.message, "success");
-            showAlert("losersAlert", json.message, "success");
-            loadGainers();
-            loadLosers();
-        } else {
-            showAlert("gainersAlert", json.error || "Failed");
-            showAlert("losersAlert", json.error || "Failed");
-        }
-    } catch(e) {
-        showAlert("gainersAlert", "Error: "+e.message);
-        showAlert("losersAlert", "Error: "+e.message);
-    }
-}
+// function updateScanResults(results) {
+//     const tbody = document.getElementById("scanResultsBody");
+    
+//     if (!results || results.length === 0) {
+//         tbody.innerHTML = `
+//             <tr>
+//                 <td colspan="9" class="text-center text-muted">
+//                     No matching symbols found. Try adjusting your criteria.
+//                 </td>
+//             </tr>
+//         `;
+//         return;
+//     }
+    
+//     tbody.innerHTML = '';
+    
+//     results.forEach((result, index) => {
+//         // Determine volume ratio color
+//         let volumeRatioClass = "text-muted";
+//         if (result.volume_ratio >= 2) {
+//             volumeRatioClass = "text-success fw-bold";
+//         } else if (result.volume_ratio >= 1.5) {
+//             volumeRatioClass = "text-warning";
+//         }
+        
+//         // Determine price change color
+//         const priceChange = result.price_change_24h || 0;
+//         let priceChangeClass = "text-muted";
+//         if (priceChange > 0) {
+//             priceChangeClass = "text-success";
+//         } else if (priceChange < 0) {
+//             priceChangeClass = "text-danger";
+//         }
+        
+//         // Format patterns
+//         let patternsHtml = "None";
+//         if (result.patterns && result.patterns.length > 0) {
+//             patternsHtml = result.patterns.slice(0, 2).map(p => 
+//                 `<span class="badge ${p.name.includes('BULLISH') ? 'bg-success' : p.name.includes('BEARISH') ? 'bg-danger' : 'bg-secondary'} me-1">${p.name}</span>`
+//             ).join('');
+//             if (result.patterns.length > 2) {
+//                 patternsHtml += `<span class="badge bg-info">+${result.patterns.length - 2}</span>`;
+//             }
+//         }
+        
+//         // Volume trend badge
+//         const volumeTrend = result.volume_profile?.volume_trend || "neutral";
+//         let trendBadge = "bg-secondary";
+//         if (volumeTrend.includes("increasing")) {
+//             trendBadge = "bg-success";
+//         } else if (volumeTrend.includes("decreasing")) {
+//             trendBadge = "bg-danger";
+//         }
+        
+//         const row = document.createElement("tr");
+//         row.innerHTML = `
+//             <td>${index + 1}</td>
+//             <td>
+//                 <strong>${result.symbol}</strong>
+//                 ${result.volume_spike ? '<span class="badge bg-danger ms-1">SPIKE</span>' : ''}
+//             </td>
+//             <td>${result.current_price?.toFixed(6) || 'N/A'}</td>
+//             <td class="${priceChangeClass}">
+//                 ${priceChange > 0 ? '+' : ''}${priceChange.toFixed(2)}%
+//             </td>
+//             <td class="${volumeRatioClass}">
+//                 ${result.volume_ratio}x
+//             </td>
+//             <td>$${(result.volume_24h || 0).toLocaleString()}</td>
+//             <td>${patternsHtml}</td>
+//             <td>
+//                 <span class="badge ${trendBadge}">
+//                     ${volumeTrend.replace('_', ' ').toUpperCase()}
+//                 </span>
+//             </td>
+//             <td>
+//                 <button class="btn btn-sm btn-primary" onclick="analyzeSymbolDetail('${result.symbol}')">
+//                     Analyze
+//                 </button>
+//             </td>
+//         `;
+//         tbody.appendChild(row);
+//     });
+// }
 
+// function updateVolumeStats(results) {
+//     if (!results || results.length === 0) return;
+    
+//     // Calculate statistics
+//     const totalPatterns = results.reduce((sum, r) => sum + (r.patterns?.length || 0), 0);
+//     const bullishPatterns = results.reduce((sum, r) => {
+//         return sum + (r.patterns?.filter(p => p.name.includes('BULLISH')).length || 0);
+//     }, 0);
+//     const bearishPatterns = results.reduce((sum, r) => {
+//         return sum + (r.patterns?.filter(p => p.name.includes('BEARISH')).length || 0);
+//     }, 0);
+    
+//     // Update statistics display
+//     document.getElementById("totalPatternsStat").textContent = totalPatterns;
+//     document.getElementById("bullishPatternsStat").textContent = bullishPatterns;
+//     document.getElementById("bearishPatternsStat").textContent = bearishPatterns;
+    
+//     // Update volume statistics from first result (for demo)
+//     if (results[0].volume_profile) {
+//         const vp = results[0].volume_profile;
+//         document.getElementById("currentVolumeStat").textContent = vp.current_volume.toLocaleString();
+//         document.getElementById("avgVolume5Stat").textContent = vp.average_volume_5.toLocaleString();
+//         document.getElementById("avgVolume10Stat").textContent = vp.average_volume_10.toLocaleString();
+        
+//         // Update volume trend badge
+//         const trendElement = document.getElementById("volumeTrendStat");
+//         trendElement.textContent = vp.volume_trend.replace('_', ' ').toUpperCase();
+//         trendElement.className = "badge ";
+        
+//         if (vp.volume_trend.includes("strong_increasing")) {
+//             trendElement.className += "bg-success";
+//         } else if (vp.volume_trend.includes("increasing")) {
+//             trendElement.className += "bg-success bg-opacity-75";
+//         } else if (vp.volume_trend.includes("strong_decreasing")) {
+//             trendElement.className += "bg-danger";
+//         } else if (vp.volume_trend.includes("decreasing")) {
+//             trendElement.className += "bg-danger bg-opacity-75";
+//         } else {
+//             trendElement.className += "bg-secondary";
+//         }
+//     }
+// }
 
-async function loadGainers() {
-    const res = await fetch(API + "/get_gainers");
-    const json = await res.json();
-    const tbody = document.getElementById("gainersBody");
-    tbody.innerHTML = "";
-    json.data.forEach((d, i) => {
-        const tr = document.createElement("tr");
-        tr.innerHTML = `
-            <td>${i+1}</td>
-            <td><strong>${d.symbol}</strong></td>
-            <td>$${Number(d.price).toFixed(6)}</td>
-            <td class="positive">+${d.price_change_percent.toFixed(2)}%</td>
-            <td>$${Number(d.volume_24h).toLocaleString()}</td>
-        `;
-        tbody.appendChild(tr);
-    });
-}
+// function updateVolumeChart(results) {
+//     const ctx = document.getElementById('volumeChart').getContext('2d');
+    
+//     if (results.length === 0) {
+//         if (volumeChart) {
+//             volumeChart.destroy();
+//         }
+//         return;
+//     }
+    
+//     // Prepare data - top 10 symbols by volume ratio
+//     const topResults = results.slice(0, 10);
+//     const labels = topResults.map(r => r.symbol);
+//     const volumeRatios = topResults.map(r => r.volume_ratio);
+//     const priceChanges = topResults.map(r => r.price_change_24h || 0);
+//     const volumes = topResults.map(r => r.volume_24h / 1000000); // Convert to millions
+    
+//     // Color arrays based on values
+//     const volumeColors = volumeRatios.map(ratio => 
+//         ratio >= 2 ? 'rgba(40, 167, 69, 0.8)' : 
+//         ratio >= 1.5 ? 'rgba(255, 193, 7, 0.8)' : 
+//         'rgba(108, 117, 125, 0.8)'
+//     );
+    
+//     const priceColors = priceChanges.map(change => 
+//         change > 0 ? 'rgba(40, 167, 69, 0.6)' : 
+//         change < 0 ? 'rgba(220, 53, 69, 0.6)' : 
+//         'rgba(108, 117, 125, 0.6)'
+//     );
+    
+//     if (volumeChart) {
+//         volumeChart.destroy();
+//     }
+    
+//     volumeChart = new Chart(ctx, {
+//         type: 'bar',
+//         data: {
+//             labels: labels,
+//             datasets: [
+//                 {
+//                     label: 'Volume Ratio (x)',
+//                     data: volumeRatios,
+//                     backgroundColor: volumeColors,
+//                     borderColor: volumeColors.map(c => c.replace('0.8', '1')),
+//                     borderWidth: 1,
+//                     yAxisID: 'y'
+//                 },
+//                 {
+//                     label: 'Price Change (%)',
+//                     data: priceChanges,
+//                     backgroundColor: priceColors,
+//                     borderColor: priceColors.map(c => c.replace('0.6', '1')),
+//                     borderWidth: 1,
+//                     type: 'line',
+//                     yAxisID: 'y1'
+//                 }
+//             ]
+//         },
+//         options: {
+//             responsive: true,
+//             maintainAspectRatio: false,
+//             plugins: {
+//                 legend: {
+//                     display: true,
+//                     position: 'top'
+//                 },
+//                 tooltip: {
+//                     callbacks: {
+//                         label: function(context) {
+//                             if (context.datasetIndex === 0) {
+//                                 return `Volume Ratio: ${context.raw.toFixed(2)}x`;
+//                             } else {
+//                                 return `Price Change: ${context.raw.toFixed(2)}%`;
+//                             }
+//                         }
+//                     }
+//                 }
+//             },
+//             scales: {
+//                 x: {
+//                     title: {
+//                         display: true,
+//                         text: 'Symbols'
+//                     }
+//                 },
+//                 y: {
+//                     type: 'linear',
+//                     display: true,
+//                     position: 'left',
+//                     title: {
+//                         display: true,
+//                         text: 'Volume Ratio (x)'
+//                     },
+//                     min: 0
+//                 },
+//                 y1: {
+//                     type: 'linear',
+//                     display: true,
+//                     position: 'right',
+//                     title: {
+//                         display: true,
+//                         text: 'Price Change (%)'
+//                     },
+//                     grid: {
+//                         drawOnChartArea: false
+//                     }
+//                 }
+//             }
+//         }
+//     });
+// }
 
-async function loadLosers() {
-    const res = await fetch(API + "/get_losers");
-    const json = await res.json();
-    const tbody = document.getElementById("losersBody");
-    tbody.innerHTML = "";
-    json.data.forEach((d, i) => {
-        const tr = document.createElement("tr");
-        tr.innerHTML = `
-            <td>${i+1}</td>
-            <td><strong>${d.symbol}</strong></td>
-            <td>$${Number(d.price).toFixed(6)}</td>
-            <td class="negative">${d.price_change_percent.toFixed(2)}%</td>
-            <td>$${Number(d.volume_24h).toLocaleString()}</td>
-        `;
-        tbody.appendChild(tr);
-    });
-}
+// function populateSymbolDropdown(results) {
+//     const select = document.getElementById("detailSymbolSelect");
+//     select.innerHTML = '<option value="">Select a symbol...</option>';
+    
+//     results.forEach(result => {
+//         const option = document.createElement("option");
+//         option.value = result.symbol;
+//         option.textContent = `${result.symbol} (Vol Ratio: ${result.volume_ratio}x)`;
+//         select.appendChild(option);
+//     });
+// }
 
-async function loadGainerSignals() {
-    showAlert("gainerSignalsAlert", "Scanning gainers with full indicators...", "info");
-    const tbody = document.getElementById("gainerSignalsBody");
-    tbody.innerHTML = "";
-    try {
-        const res = await fetch(API + "/gainers_signals");
-        const json = await res.json();
-        if (!json.success) {
-            showAlert("gainerSignalsAlert", "Search failed");
-            return;
-        }
-        json.data.forEach((d, i) => {
-            // Determine signal class
-            let cls = "signal-neutral";
-            if (d.signal.startsWith("STRONG_BULLISH")) cls = "signal-strong-bullish";
-            else if (d.signal.startsWith("BULLISH")) cls = "signal-bullish";
-            else if (d.signal.startsWith("STRONG_BEARISH") || d.signal.startsWith("BEARISH")) cls = "signal-bearish";
-            else if (d.signal.startsWith("WATCH_")) cls = "signal-watch";
-            
-            // Risk level badge
-            let riskBadge = 'secondary';
-            let riskLevel = d.risk_level || 'N/A';
-            if (riskLevel === 'HIGH') riskBadge = 'danger';
-            else if (riskLevel === 'MEDIUM') riskBadge = 'warning';
-            else if (riskLevel === 'LOW') riskBadge = 'success';
-            else if (riskLevel === 'VERY_LOW') riskBadge = 'info';
-            
-            // Trend badge
-            let trendBadge = 'secondary';
-            let trend = d.trend || 'neutral';
-            if (trend === 'bullish') trendBadge = 'success';
-            else if (trend === 'bearish') trendBadge = 'danger';
-            else if (trend === 'mixed') trendBadge = 'warning';
-            
-            const tr = document.createElement("tr");
-            tr.innerHTML = `
-                <td>${i+1}</td>
-                <td><strong>${d.symbol}</strong></td>
-                <td class="${d.price_change_percent >= 0 ? "positive" : "negative"}">
-                    ${d.price_change_percent.toFixed(2)}%
-                </td>
-                <td>$${Number(d.volume_24h).toLocaleString()}</td>
-                <td>${d.close.toFixed(6)}</td>
-                <td>${d.rsi ? d.rsi.toFixed(2) : "n/a"}</td>
-                <td class="${cls}">${d.signal}</td>
-                <td>
-                    <div class="progress" style="height: 20px; min-width: 60px;">
-                        <div class="progress-bar ${cls.includes('bullish') ? 'bg-success' : cls.includes('bearish') ? 'bg-danger' : 'bg-secondary'}" 
-                             style="width: ${d.score}%">
-                            ${d.score}
-                        </div>
-                    </div>
-                </td>
-                <td>${d.confidence ? d.confidence.toFixed(1) + '%' : 'n/a'}</td>
-                <td><span class="badge bg-${trendBadge}">${trend}</span></td>
-                <td><span class="badge bg-${riskBadge}">${riskLevel}</span></td>
-            `;
-            tbody.appendChild(tr);
-        });
-        showAlert("gainerSignalsAlert", "Gainer signals ready", "success");
-    } catch(e) {
-        showAlert("gainerSignalsAlert", "Error: "+e.message);
-    }
-}
+// async function analyzeSymbolDetail(symbol) {
+//     try {
+//         const timeframe = document.getElementById("detailTimeframe").value;
+        
+//         const res = await fetch(API + "/real_time_volume_analysis", {
+//             method: "POST",
+//             headers: { "Content-Type": "application/json" },
+//             body: JSON.stringify({
+//                 symbol: symbol,
+//                 timeframe: timeframe,
+//                 lookback: 50
+//             })
+//         });
+        
+//         const data = await res.json();
+        
+//         if (!data.success) {
+//             throw new Error(data.error || "Analysis failed");
+//         }
+        
+//         displayDetailedAnalysis(symbol, data);
+        
+//     } catch (error) {
+//         console.error("Detailed analysis error:", error);
+//         alert(`Analysis failed: ${error.message}`);
+//     }
+// }
 
-async function loadRotation() {
-    showAlert("rotationAlert", "Scanning rotation opportunities...", "info");
-    const container = document.getElementById("rotationResults");
-    container.innerHTML = "";
-    try {
-        const res = await fetch(API + "/rotation_signals");
-        const json = await res.json();
-        if (!json.success) {
-            showAlert("rotationAlert", json.error || "Failed");
-            return;
-        }
-        const data = json.data;
-        if (!data.length) {
-            showAlert("rotationAlert", "No rotation candidates found.", "warning");
-            return;
-        }
-        data.forEach((block, idx) => {
-            const div = document.createElement("div");
-            div.className = "card mb-3";
-            let html = `
-                <div class="card-header">
-                    Pumped: <strong>${block.pumped_symbol}</strong>
-                    (Cat: ${block.pumped_category}) – ${block.pumped_change_pct.toFixed(2)}%,
-                    Vol: $${Number(block.pumped_volume).toLocaleString()}
-                </div>
-                <div class="card-body">
-                    <table class="table table-sm table-bordered">
-                        <thead class="table-info">
-                            <tr>
-                                <th>#</th><th>Symbol</th><th>Score</th><th>Label</th><th>RSI</th><th>24h %</th><th>Vol</th><th>Close</th><th>Confidence</th><th>Trend</th><th>Risk</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-            `;
-            block.rotation_candidates.forEach((c, i) => {
-                let cls = "signal-neutral";
-                if (c.label.startsWith("STRONG_BULLISH")) cls = "signal-strong-bullish";
-                else if (c.label.startsWith("BULLISH")) cls = "signal-bullish";
-                else if (c.label.startsWith("STRONG_BEARISH") || c.label.startsWith("BEARISH")) cls = "signal-bearish";
-                else if (c.label.startsWith("WATCH_")) cls = "signal-watch";
-                
-                // Risk level badge
-                let riskBadge = 'secondary';
-                let riskLevel = c.risk_level || 'N/A';
-                if (riskLevel === 'HIGH') riskBadge = 'danger';
-                else if (riskLevel === 'MEDIUM') riskBadge = 'warning';
-                else if (riskLevel === 'LOW') riskBadge = 'success';
-                else if (riskLevel === 'VERY_LOW') riskBadge = 'info';
-                
-                // Trend badge
-                let trendBadge = 'secondary';
-                let trend = c.trend || 'neutral';
-                if (trend === 'bullish') trendBadge = 'success';
-                else if (trend === 'bearish') trendBadge = 'danger';
-                else if (trend === 'mixed') trendBadge = 'warning';
-                
-                html += `
-                    <tr>
-                        <td>${i+1}</td>
-                        <td><strong>${c.symbol}</strong></td>
-                        <td>
-                            <div class="progress" style="height: 20px; min-width: 60px;">
-                                <div class="progress-bar ${cls.includes('bullish') ? 'bg-success' : cls.includes('bearish') ? 'bg-danger' : 'bg-secondary'}" 
-                                     style="width: ${c.score}%">
-                                    ${c.score}
-                                </div>
-                            </div>
-                        </td>
-                        <td class="${cls}">${c.label}</td>
-                        <td>${c.rsi ? c.rsi.toFixed(2) : "n/a"}</td>
-                        <td>${c.today_change_pct.toFixed(2)}%</td>
-                        <td>$${Number(c.today_volume).toLocaleString()}</td>
-                        <td>${c.close.toFixed(6)}</td>
-                        <td>${c.confidence ? c.confidence.toFixed(1) + '%' : 'n/a'}</td>
-                        <td><span class="badge bg-${trendBadge}">${trend}</span></td>
-                        <td><span class="badge bg-${riskBadge}">${riskLevel}</span></td>
-                    </tr>
-                `;
-            });
-            html += `</tbody></table></div>`;
-            div.innerHTML = html;
-            container.appendChild(div);
-        });
-        showAlert("rotationAlert", "Rotation candidates ready.", "success");
-    } catch(e) {
-        showAlert("rotationAlert", "Error: "+e.message);
-    }
-}
+// async function loadDetailedAnalysis() {
+//     const symbol = document.getElementById("detailSymbolSelect").value;
+//     if (!symbol) return;
+    
+//     analyzeSymbolDetail(symbol);
+// }
 
-async function trainBot() {
-    const symbol = document.getElementById("trainSymbol").value.trim().toUpperCase().replace(/[-_]/g, '/');
-    const timeframes = Array.from(document.getElementById("trainTimeframes").selectedOptions).map(opt => opt.value);
-    const lookBack = parseInt(document.getElementById("trainLookBack").value);
+// function displayDetailedAnalysis(symbol, data) {
+//     const container = document.getElementById("detailedAnalysis");
     
-    if (!symbol || timeframes.length === 0) {
-        showAlert("trainAlert", "Select symbol and at least one timeframe", "danger");
-        return;
-    }
+//     if (!data.volume_metrics) {
+//         container.innerHTML = `
+//             <div class="alert alert-warning">
+//                 No detailed analysis available for ${symbol}
+//             </div>
+//         `;
+//         return;
+//     }
     
-    showAlert("trainAlert", "Training model...", "info");
-    try {
-        const res = await fetch(API + "/train_bot", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ symbol, timeframes, look_back: lookBack })
-        });
-        const json = await res.json();
-        if (json.success) {
-            showAlert("trainAlert", json.message, "success");
-        } else {
-            showAlert("trainAlert", json.error, "danger");
-        }
-    } catch (e) {
-        showAlert("trainAlert", "Error: " + e.message, "danger");
-    }
-}
-
-async function predictCandle() {
-    const symbol = document.getElementById("predictSymbol").value.trim().toUpperCase().replace(/[-_]/g, '/');
-    const timeframe = document.getElementById("predictTimeframe").value;
-    const lookBack = parseInt(document.getElementById("predictLookBack").value);
-    const expander = parseFloat(document.getElementById("predictExpander").value);
+//     const metrics = data.volume_metrics;
+//     const signals = data.signals || [];
+//     const spikes = data.volume_spikes || [];
     
-    if (!symbol) {
-        showAlert("predictAlert", "Select symbol", "danger");
-        return;
-    }
+//     // Color for volume trend
+//     let trendColor = "secondary";
+//     if (metrics.volume_trend.includes("UPTREND")) {
+//         trendColor = "success";
+//     } else if (metrics.volume_trend.includes("DOWNTREND")) {
+//         trendColor = "danger";
+//     }
     
-    showAlert("predictAlert", "Predicting next candle...", "info");
-    try {
-        const res = await fetch(API + "/predict_candle", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ symbol, timeframe, look_back: lookBack, expander })
-        });
-        const json = await res.json();
-        if (json.success) {
-            showAlert("predictAlert", "Prediction ready", "success");
-            displayPrediction(json.prediction);
-        } else {
-            showAlert("predictAlert", json.error, "danger");
-        }
-    } catch (e) {
-        showAlert("predictAlert", "Error: " + e.message, "danger");
-    }
-}
-
-function displayPrediction(pred) {
-    const container = document.getElementById("predictResults");
-    
-    // Determine signal class based on bias and strength
-    let signalClass = 'signal-neutral';
-    let signalBadge = 'secondary';
-    if (pred.bias === 'bullish' && pred.strength === 'strong') {
-        signalClass = 'signal-strong-bullish';
-        signalBadge = 'primary';
-    } else if (pred.bias === 'bullish') {
-        signalClass = 'signal-bullish';
-        signalBadge = 'success';
-    } else if (pred.bias === 'bearish') {
-        signalClass = 'signal-bearish';
-        signalBadge = 'danger';
-    }
-    
-    // Risk level color
-    let riskClass = 'info';
-    if (pred.risk_level === 'HIGH') riskClass = 'danger';
-    else if (pred.risk_level === 'MEDIUM') riskClass = 'warning';
-    else if (pred.risk_level === 'LOW') riskClass = 'success';
-    
-    // Trend alignment badge
-    let trendBadge = 'secondary';
-    if (pred.trend === 'bullish') trendBadge = 'success';
-    else if (pred.trend === 'bearish') trendBadge = 'danger';
-    else if (pred.trend === 'mixed') trendBadge = 'warning';
-    
-    // Build top reasons list
-    let reasonsList = '';
-    if (pred.top_reasons && pred.top_reasons.length > 0) {
-        reasonsList = pred.top_reasons.map(r => `<li>${r}</li>`).join('');
-    }
-    
-    // Build volume signals
-    let volumeSignals = '';
-    if (pred.volume_signals && pred.volume_signals.length > 0) {
-        volumeSignals = pred.volume_signals.map(v => `<span class="badge bg-info me-1">${v}</span>`).join('');
-    }
-    
-    // Build divergence signals
-    let divergenceSignals = '';
-    if (pred.divergence_signals && pred.divergence_signals.length > 0) {
-        divergenceSignals = pred.divergence_signals.map(d => `<span class="badge bg-warning text-dark me-1">${d}</span>`).join('');
-    }
-    
-    container.innerHTML = `
-        <div class="row">
-            <!-- Main Signal Card -->
-            <div class="col-lg-6 mb-3">
-                <div class="card signal-card ${pred.bias || 'neutral'}">
-                    <div class="card-header">
-                        <h5 class="mb-0">
-                            <span class="${signalClass}">${pred.signal || pred.label}</span>
-                            <span class="badge bg-${signalBadge} float-end">${pred.strength ? pred.strength.toUpperCase() : ''}</span>
-                        </h5>
-                    </div>
-                    <div class="card-body">
-                        <div class="row mb-3">
-                            <div class="col-6">
-                                <div class="text-muted small">SIGNAL SCORE</div>
-                                <div class="progress mb-2" style="height: 25px;">
-                                    <div class="progress-bar bg-${signalBadge}" role="progressbar" 
-                                         style="width: ${pred.score}%;" 
-                                         aria-valuenow="${pred.score}" aria-valuemin="0" aria-valuemax="100">
-                                        ${pred.score}%
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="col-6">
-                                <div class="text-muted small">CONFIDENCE</div>
-                                <div class="progress mb-2" style="height: 25px;">
-                                    <div class="progress-bar bg-info" role="progressbar" 
-                                         style="width: ${pred.confidence}%;" 
-                                         aria-valuenow="${pred.confidence}" aria-valuemin="0" aria-valuemax="100">
-                                        ${pred.confidence}%
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div class="row mb-2">
-                            <div class="col-6">
-                                <strong>Current Price:</strong><br>
-                                <span class="fs-4">${pred.price ? pred.price.toFixed(4) : 'N/A'}</span>
-                            </div>
-                            <div class="col-6">
-                                <strong>Trend Alignment:</strong><br>
-                                <span class="badge bg-${trendBadge} fs-6">${pred.trend || 'N/A'}</span>
-                            </div>
-                        </div>
-                        
-                        ${pred.volatility_state ? `
-                        <div class="mt-2">
-                            <strong>Volatility State:</strong> 
-                            <span class="badge ${pred.volatility_state === 'high' ? 'bg-danger' : pred.volatility_state === 'low' ? 'bg-success' : 'bg-secondary'}">
-                                ${pred.volatility_state.toUpperCase()}
-                            </span>
-                        </div>
-                        ` : ''}
-                        
-                        ${pred.momentum_score !== undefined ? `
-                        <div class="mt-2">
-                            <strong>Momentum Score:</strong> 
-                            <span class="${pred.momentum_score > 0 ? 'text-success' : 'text-danger'} fw-bold">
-                                ${(pred.momentum_score * 100).toFixed(1)}%
-                            </span>
-                        </div>
-                        ` : ''}
-                    </div>
-                </div>
-            </div>
-            
-            <!-- Key Levels Card -->
-            <div class="col-lg-6 mb-3">
-                <div class="card">
-                    <div class="card-header bg-primary text-white">
-                        <h6 class="mb-0">Key Support & Resistance Levels</h6>
-                    </div>
-                    <div class="card-body">
-                        ${pred.key_levels ? `
-                        <table class="table table-sm table-borderless mb-0">
-                            <tr>
-                                <td><strong>Resistance:</strong></td>
-                                <td class="text-end text-danger fw-bold">${pred.key_levels.resistance ? pred.key_levels.resistance.toFixed(4) : 'N/A'}</td>
-                            </tr>
-                            <tr>
-                                <td><strong>Current Price:</strong></td>
-                                <td class="text-end fw-bold">${pred.price ? pred.price.toFixed(4) : 'N/A'}</td>
-                            </tr>
-                            <tr>
-                                <td><strong>EMA 20:</strong></td>
-                                <td class="text-end text-primary">${pred.key_levels.ema20 ? pred.key_levels.ema20.toFixed(4) : 'N/A'}</td>
-                            </tr>
-                            <tr>
-                                <td><strong>Support:</strong></td>
-                                <td class="text-end text-success fw-bold">${pred.key_levels.support ? pred.key_levels.support.toFixed(4) : 'N/A'}</td>
-                            </tr>
-                        </table>
-                        ` : '<p class="text-muted">No level data available</p>'}
-                        
-                        ${pred.volume_status ? `
-                        <div class="mt-3 pt-3 border-top">
-                            <strong>Volume Status:</strong><br>
-                            <span class="badge bg-info">${pred.volume_status}</span>
-                        </div>
-                        ` : ''}
-                    </div>
-                </div>
-            </div>
-        </div>
-        
-        <!-- Risk Assessment -->
-        ${pred.risk_level ? `
-        <div class="card mb-3">
-            <div class="card-header bg-${riskClass} text-white">
-                <h6 class="mb-0">
-                    Risk Assessment: <strong>${pred.risk_level}</strong>
-                    ${pred.risk_score !== undefined ? `<span class="float-end">Score: ${pred.risk_score}</span>` : ''}
-                </h6>
-            </div>
-            ${pred.risk_factors && pred.risk_factors.length > 0 ? `
-            <div class="card-body">
-                <ul class="mb-0">
-                    ${pred.risk_factors.map(f => `<li>${f}</li>`).join('')}
-                </ul>
-                ${pred.recommended_position_size !== undefined ? `
-                <div class="mt-3 p-2 bg-light rounded">
-                    <strong>Recommended Position Size:</strong> 
-                    <span class="badge bg-primary">${(pred.recommended_position_size * 100).toFixed(0)}%</span>
-                </div>
-                ` : ''}
-            </div>
-            ` : ''}
-        </div>
-        ` : ''}
-        
-        <!-- Top Reasons -->
-        ${reasonsList ? `
-        <div class="card mb-3">
-            <div class="card-header">
-                <h6 class="mb-0">Top Analysis Reasons</h6>
-            </div>
-            <div class="card-body">
-                <ul class="mb-0">${reasonsList}</ul>
-            </div>
-        </div>
-        ` : ''}
-        
-        <!-- Volume & Divergence Signals -->
-        <div class="row">
-            ${volumeSignals ? `
-            <div class="col-md-6 mb-3">
-                <div class="card">
-                    <div class="card-header">
-                        <h6 class="mb-0">Volume Signals</h6>
-                    </div>
-                    <div class="card-body">
-                        ${volumeSignals}
-                    </div>
-                </div>
-            </div>
-            ` : ''}
-            
-            ${divergenceSignals ? `
-            <div class="col-md-6 mb-3">
-                <div class="card">
-                    <div class="card-header">
-                        <h6 class="mb-0">Divergence Signals</h6>
-                    </div>
-                    <div class="card-body">
-                        ${divergenceSignals}
-                    </div>
-                </div>
-            </div>
-            ` : ''}
-        </div>
-        
-        <!-- Original Prediction Data (if exists) -->
-        ${pred.pct_close !== undefined ? `
-        <div class="card">
-            <div class="card-header">
-                <h6 class="mb-0">Price Prediction Details</h6>
-            </div>
-            <div class="card-body">
-                <p><strong>% Close Change:</strong> ${pred.pct_close.toFixed(2)}% (Bounds: ${pred.close_low.toFixed(2)}% to ${pred.close_high.toFixed(2)}%)</p>
-                <p><strong>% High Change:</strong> ${pred.pct_high.toFixed(2)}% (Bounds: ${pred.high_low.toFixed(2)}% to ${pred.high_high.toFixed(2)}%)</p>
-                <p><strong>% Low Change:</strong> ${pred.pct_low.toFixed(2)}% (Bounds: ${pred.low_low.toFixed(2)}% to ${pred.low_high.toFixed(2)}%)</p>
-                <small>Based on ${pred.matches} historical matches.</small>
-            </div>
-        </div>
-        ` : ''}
-    `;
-}
-
-async function syncBinanceSymbols() {
-    showAlert("symbolSyncAlert", "Syncing Binance symbols...", "info");
-    try {
-        const res = await fetch(API + "/sync_binance_symbols", { method: "POST" });
-        const json = await res.json();
-        if (!json.success) {
-            showAlert("symbolSyncAlert", json.error || "Sync failed");
-            return;
-        }
-        document.getElementById("syncTotal").innerText = json.total_markets;
-        document.getElementById("syncExisting").innerText = json.already_existing;
-        document.getElementById("syncNew").innerText = json.newly_added;
-        showAlert("symbolSyncAlert", `Sync complete. ${json.newly_added} new symbols added.`, "success");
-    } catch (e) {
-        showAlert("symbolSyncAlert", "Error: " + e.message);
-    }
-}
-
-async function searchSymbols() {
-    const q = document.getElementById("symbolSearch").value.trim();
-    showAlert("symbolsAlert", "Searching symbols...", "info");
-    try {
-        const res = await fetch(`${API}/search_symbols?q=${encodeURIComponent(q)}`);
-        const json = await res.json();
-        if (!json.success) {
-            showAlert("symbolsAlert", "Search failed");
-            return;
-        }
-        const tbody = document.getElementById("symbolsBody");
-        tbody.innerHTML = "";
-        json.data.forEach((r, i) => {
-            const tr = document.createElement("tr");
-            tr.innerHTML = `
-                <td>${i + 1}</td>
-                <td><strong>${r.symbol}</strong></td>
-                <td>${r.base || ""}</td>
-                <td>${r.quote || ""}</td>
-                <td>${r.active ? "Yes" : "No"}</td>
-                <td>${r.created_at || ""}</td>
-            `;
-            tbody.appendChild(tr);
-        });
-        showAlert("symbolsAlert", `Loaded ${json.data.length} symbols`, "success");
-    } catch (e) {
-        showAlert("symbolsAlert", "Error: " + e.message);
-    }
-}
-
-function exportSymbolsExcel() {
-    const q = document.getElementById("symbolSearch").value.trim();
-    const url = `${API}/export_symbols_excel?q=${encodeURIComponent(q)}`;
-    window.open(url, "_blank");
-}
-
-function showAlert(id, msg, type = "danger") {
-    const alertDiv = document.getElementById(id);
-    if (alertDiv) {
-        alertDiv.innerHTML = `
-            <div class="alert alert-${type} alert-dismissible fade show">
-                ${msg}
-                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-            </div>`;
-    }
-}
-
-// Auto-load gainers/losers on tab open
-document.querySelectorAll('#mainTabs a').forEach(tab => {
-    tab.addEventListener('shown.bs.tab', e => {
-        const href = e.target.getAttribute('href');
-        if (href === '#gainers') loadGainers();
-        if (href === '#losers') loadLosers();
-        if (href === '#orderbook') updateExchangeStatus();
-    });
-});
-
-// === CANDLE PATTERN & VOLUME SCANNER FUNCTIONS ===
-let volumeChart = null;
-let realTimeMonitoring = false;
-let monitoringInterval = null;
-
-async function scanCandlePatterns() {
-    const spinner = document.getElementById("scanSpinner");
-    const button = spinner.parentElement;
-    
-    // Show loading state
-    spinner.classList.remove("d-none");
-    button.disabled = true;
-    
-    try {
-        const timeframe = document.getElementById("scanTimeframe").value;
-        const volumeThreshold = parseFloat(document.getElementById("volumeThreshold").value);
-        const minVolume = parseFloat(document.getElementById("minVolume").value);
-        
-        const res = await fetch(API + "/scan_candle_patterns", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                timeframe: timeframe,
-                volume_threshold: volumeThreshold,
-                min_volume: minVolume,
-                max_symbols: 50
-            })
-        });
-        
-        const data = await res.json();
-        
-        if (!data.success) {
-            throw new Error(data.error || "Scan failed");
-        }
-        
-        // Update results count
-        document.getElementById("resultCount").textContent = 
-            `${data.matches} symbols found (scanned ${data.scanned_symbols})`;
-        
-        // Update results table
-        updateScanResults(data.results);
-        
-        // Update volume statistics
-        updateVolumeStats(data.results);
-        
-        // Update chart
-        updateVolumeChart(data.results);
-        
-        // Populate detailed analysis dropdown
-        populateSymbolDropdown(data.results);
-        
-    } catch (error) {
-        console.error("Scan error:", error);
-        alert(`Scan failed: ${error.message}`);
-    } finally {
-        // Hide loading state
-        spinner.classList.add("d-none");
-        button.disabled = false;
-    }
-}
-
-function updateScanResults(results) {
-    const tbody = document.getElementById("scanResultsBody");
-    
-    if (!results || results.length === 0) {
-        tbody.innerHTML = `
-            <tr>
-                <td colspan="9" class="text-center text-muted">
-                    No matching symbols found. Try adjusting your criteria.
-                </td>
-            </tr>
-        `;
-        return;
-    }
-    
-    tbody.innerHTML = '';
-    
-    results.forEach((result, index) => {
-        // Determine volume ratio color
-        let volumeRatioClass = "text-muted";
-        if (result.volume_ratio >= 2) {
-            volumeRatioClass = "text-success fw-bold";
-        } else if (result.volume_ratio >= 1.5) {
-            volumeRatioClass = "text-warning";
-        }
-        
-        // Determine price change color
-        const priceChange = result.price_change_24h || 0;
-        let priceChangeClass = "text-muted";
-        if (priceChange > 0) {
-            priceChangeClass = "text-success";
-        } else if (priceChange < 0) {
-            priceChangeClass = "text-danger";
-        }
-        
-        // Format patterns
-        let patternsHtml = "None";
-        if (result.patterns && result.patterns.length > 0) {
-            patternsHtml = result.patterns.slice(0, 2).map(p => 
-                `<span class="badge ${p.name.includes('BULLISH') ? 'bg-success' : p.name.includes('BEARISH') ? 'bg-danger' : 'bg-secondary'} me-1">${p.name}</span>`
-            ).join('');
-            if (result.patterns.length > 2) {
-                patternsHtml += `<span class="badge bg-info">+${result.patterns.length - 2}</span>`;
-            }
-        }
-        
-        // Volume trend badge
-        const volumeTrend = result.volume_profile?.volume_trend || "neutral";
-        let trendBadge = "bg-secondary";
-        if (volumeTrend.includes("increasing")) {
-            trendBadge = "bg-success";
-        } else if (volumeTrend.includes("decreasing")) {
-            trendBadge = "bg-danger";
-        }
-        
-        const row = document.createElement("tr");
-        row.innerHTML = `
-            <td>${index + 1}</td>
-            <td>
-                <strong>${result.symbol}</strong>
-                ${result.volume_spike ? '<span class="badge bg-danger ms-1">SPIKE</span>' : ''}
-            </td>
-            <td>${result.current_price?.toFixed(6) || 'N/A'}</td>
-            <td class="${priceChangeClass}">
-                ${priceChange > 0 ? '+' : ''}${priceChange.toFixed(2)}%
-            </td>
-            <td class="${volumeRatioClass}">
-                ${result.volume_ratio}x
-            </td>
-            <td>$${(result.volume_24h || 0).toLocaleString()}</td>
-            <td>${patternsHtml}</td>
-            <td>
-                <span class="badge ${trendBadge}">
-                    ${volumeTrend.replace('_', ' ').toUpperCase()}
-                </span>
-            </td>
-            <td>
-                <button class="btn btn-sm btn-primary" onclick="analyzeSymbolDetail('${result.symbol}')">
-                    Analyze
-                </button>
-            </td>
-        `;
-        tbody.appendChild(row);
-    });
-}
-
-function updateVolumeStats(results) {
-    if (!results || results.length === 0) return;
-    
-    // Calculate statistics
-    const totalPatterns = results.reduce((sum, r) => sum + (r.patterns?.length || 0), 0);
-    const bullishPatterns = results.reduce((sum, r) => {
-        return sum + (r.patterns?.filter(p => p.name.includes('BULLISH')).length || 0);
-    }, 0);
-    const bearishPatterns = results.reduce((sum, r) => {
-        return sum + (r.patterns?.filter(p => p.name.includes('BEARISH')).length || 0);
-    }, 0);
-    
-    // Update statistics display
-    document.getElementById("totalPatternsStat").textContent = totalPatterns;
-    document.getElementById("bullishPatternsStat").textContent = bullishPatterns;
-    document.getElementById("bearishPatternsStat").textContent = bearishPatterns;
-    
-    // Update volume statistics from first result (for demo)
-    if (results[0].volume_profile) {
-        const vp = results[0].volume_profile;
-        document.getElementById("currentVolumeStat").textContent = vp.current_volume.toLocaleString();
-        document.getElementById("avgVolume5Stat").textContent = vp.average_volume_5.toLocaleString();
-        document.getElementById("avgVolume10Stat").textContent = vp.average_volume_10.toLocaleString();
-        
-        // Update volume trend badge
-        const trendElement = document.getElementById("volumeTrendStat");
-        trendElement.textContent = vp.volume_trend.replace('_', ' ').toUpperCase();
-        trendElement.className = "badge ";
-        
-        if (vp.volume_trend.includes("strong_increasing")) {
-            trendElement.className += "bg-success";
-        } else if (vp.volume_trend.includes("increasing")) {
-            trendElement.className += "bg-success bg-opacity-75";
-        } else if (vp.volume_trend.includes("strong_decreasing")) {
-            trendElement.className += "bg-danger";
-        } else if (vp.volume_trend.includes("decreasing")) {
-            trendElement.className += "bg-danger bg-opacity-75";
-        } else {
-            trendElement.className += "bg-secondary";
-        }
-    }
-}
-
-function updateVolumeChart(results) {
-    const ctx = document.getElementById('volumeChart').getContext('2d');
-    
-    if (results.length === 0) {
-        if (volumeChart) {
-            volumeChart.destroy();
-        }
-        return;
-    }
-    
-    // Prepare data - top 10 symbols by volume ratio
-    const topResults = results.slice(0, 10);
-    const labels = topResults.map(r => r.symbol);
-    const volumeRatios = topResults.map(r => r.volume_ratio);
-    const priceChanges = topResults.map(r => r.price_change_24h || 0);
-    const volumes = topResults.map(r => r.volume_24h / 1000000); // Convert to millions
-    
-    // Color arrays based on values
-    const volumeColors = volumeRatios.map(ratio => 
-        ratio >= 2 ? 'rgba(40, 167, 69, 0.8)' : 
-        ratio >= 1.5 ? 'rgba(255, 193, 7, 0.8)' : 
-        'rgba(108, 117, 125, 0.8)'
-    );
-    
-    const priceColors = priceChanges.map(change => 
-        change > 0 ? 'rgba(40, 167, 69, 0.6)' : 
-        change < 0 ? 'rgba(220, 53, 69, 0.6)' : 
-        'rgba(108, 117, 125, 0.6)'
-    );
-    
-    if (volumeChart) {
-        volumeChart.destroy();
-    }
-    
-    volumeChart = new Chart(ctx, {
-        type: 'bar',
-        data: {
-            labels: labels,
-            datasets: [
-                {
-                    label: 'Volume Ratio (x)',
-                    data: volumeRatios,
-                    backgroundColor: volumeColors,
-                    borderColor: volumeColors.map(c => c.replace('0.8', '1')),
-                    borderWidth: 1,
-                    yAxisID: 'y'
-                },
-                {
-                    label: 'Price Change (%)',
-                    data: priceChanges,
-                    backgroundColor: priceColors,
-                    borderColor: priceColors.map(c => c.replace('0.6', '1')),
-                    borderWidth: 1,
-                    type: 'line',
-                    yAxisID: 'y1'
-                }
-            ]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: {
-                    display: true,
-                    position: 'top'
-                },
-                tooltip: {
-                    callbacks: {
-                        label: function(context) {
-                            if (context.datasetIndex === 0) {
-                                return `Volume Ratio: ${context.raw.toFixed(2)}x`;
-                            } else {
-                                return `Price Change: ${context.raw.toFixed(2)}%`;
-                            }
-                        }
-                    }
-                }
-            },
-            scales: {
-                x: {
-                    title: {
-                        display: true,
-                        text: 'Symbols'
-                    }
-                },
-                y: {
-                    type: 'linear',
-                    display: true,
-                    position: 'left',
-                    title: {
-                        display: true,
-                        text: 'Volume Ratio (x)'
-                    },
-                    min: 0
-                },
-                y1: {
-                    type: 'linear',
-                    display: true,
-                    position: 'right',
-                    title: {
-                        display: true,
-                        text: 'Price Change (%)'
-                    },
-                    grid: {
-                        drawOnChartArea: false
-                    }
-                }
-            }
-        }
-    });
-}
-
-function populateSymbolDropdown(results) {
-    const select = document.getElementById("detailSymbolSelect");
-    select.innerHTML = '<option value="">Select a symbol...</option>';
-    
-    results.forEach(result => {
-        const option = document.createElement("option");
-        option.value = result.symbol;
-        option.textContent = `${result.symbol} (Vol Ratio: ${result.volume_ratio}x)`;
-        select.appendChild(option);
-    });
-}
-
-async function analyzeSymbolDetail(symbol) {
-    try {
-        const timeframe = document.getElementById("detailTimeframe").value;
-        
-        const res = await fetch(API + "/real_time_volume_analysis", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                symbol: symbol,
-                timeframe: timeframe,
-                lookback: 50
-            })
-        });
-        
-        const data = await res.json();
-        
-        if (!data.success) {
-            throw new Error(data.error || "Analysis failed");
-        }
-        
-        displayDetailedAnalysis(symbol, data);
-        
-    } catch (error) {
-        console.error("Detailed analysis error:", error);
-        alert(`Analysis failed: ${error.message}`);
-    }
-}
-
-async function loadDetailedAnalysis() {
-    const symbol = document.getElementById("detailSymbolSelect").value;
-    if (!symbol) return;
-    
-    analyzeSymbolDetail(symbol);
-}
-
-function displayDetailedAnalysis(symbol, data) {
-    const container = document.getElementById("detailedAnalysis");
-    
-    if (!data.volume_metrics) {
-        container.innerHTML = `
-            <div class="alert alert-warning">
-                No detailed analysis available for ${symbol}
-            </div>
-        `;
-        return;
-    }
-    
-    const metrics = data.volume_metrics;
-    const signals = data.signals || [];
-    const spikes = data.volume_spikes || [];
-    
-    // Color for volume trend
-    let trendColor = "secondary";
-    if (metrics.volume_trend.includes("UPTREND")) {
-        trendColor = "success";
-    } else if (metrics.volume_trend.includes("DOWNTREND")) {
-        trendColor = "danger";
-    }
-    
-    container.innerHTML = `
-        <div class="card">
-            <div class="card-header bg-info text-white">
-                <h5 class="mb-0">📊 Detailed Volume Analysis: ${symbol}</h5>
-            </div>
-            <div class="card-body">
-                <div class="row">
-                    <div class="col-md-6">
-                        <h6>Volume Metrics</h6>
-                        <table class="table table-sm">
-                            <tr>
-                                <td><strong>Current Volume:</strong></td>
-                                <td class="text-end">${metrics.current_volume.toLocaleString()}</td>
-                            </tr>
-                            <tr>
-                                <td><strong>5-Candle Average:</strong></td>
-                                <td class="text-end">${metrics.average_5_candles.toLocaleString()}</td>
-                            </tr>
-                            <tr>
-                                <td><strong>10-Candle Average:</strong></td>
-                                <td class="text-end">${metrics.average_10_candles.toLocaleString()}</td>
-                            </tr>
-                            <tr>
-                                <td><strong>Volume Trend:</strong></td>
-                                <td class="text-end">
-                                    <span class="badge bg-${trendColor}">
-                                        ${metrics.volume_trend}
-                                    </span>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td><strong>Volume Change:</strong></td>
-                                <td class="text-end ${metrics.volume_change_pct > 0 ? 'text-success' : 'text-danger'}">
-                                    ${metrics.volume_change_pct > 0 ? '+' : ''}${metrics.volume_change_pct.toFixed(2)}%
-                                </td>
-                            </tr>
-                            <tr>
-                                <td><strong>VWAP:</strong></td>
-                                <td class="text-end">${metrics.vwap?.toFixed(6) || 'N/A'}</td>
-                            </tr>
-                        </table>
-                    </div>
+//     container.innerHTML = `
+//         <div class="card">
+//             <div class="card-header bg-info text-white">
+//                 <h5 class="mb-0">📊 Detailed Volume Analysis: ${symbol}</h5>
+//             </div>
+//             <div class="card-body">
+//                 <div class="row">
+//                     <div class="col-md-6">
+//                         <h6>Volume Metrics</h6>
+//                         <table class="table table-sm">
+//                             <tr>
+//                                 <td><strong>Current Volume:</strong></td>
+//                                 <td class="text-end">${metrics.current_volume.toLocaleString()}</td>
+//                             </tr>
+//                             <tr>
+//                                 <td><strong>5-Candle Average:</strong></td>
+//                                 <td class="text-end">${metrics.average_5_candles.toLocaleString()}</td>
+//                             </tr>
+//                             <tr>
+//                                 <td><strong>10-Candle Average:</strong></td>
+//                                 <td class="text-end">${metrics.average_10_candles.toLocaleString()}</td>
+//                             </tr>
+//                             <tr>
+//                                 <td><strong>Volume Trend:</strong></td>
+//                                 <td class="text-end">
+//                                     <span class="badge bg-${trendColor}">
+//                                         ${metrics.volume_trend}
+//                                     </span>
+//                                 </td>
+//                             </tr>
+//                             <tr>
+//                                 <td><strong>Volume Change:</strong></td>
+//                                 <td class="text-end ${metrics.volume_change_pct > 0 ? 'text-success' : 'text-danger'}">
+//                                     ${metrics.volume_change_pct > 0 ? '+' : ''}${metrics.volume_change_pct.toFixed(2)}%
+//                                 </td>
+//                             </tr>
+//                             <tr>
+//                                 <td><strong>VWAP:</strong></td>
+//                                 <td class="text-end">${metrics.vwap?.toFixed(6) || 'N/A'}</td>
+//                             </tr>
+//                         </table>
+//                     </div>
                     
-                    <div class="col-md-6">
-                        <h6>Volume Signals</h6>
-                        <div class="mb-3">
-                            ${signals.length > 0 ? 
-                                signals.map(signal => 
-                                    `<span class="badge bg-warning text-dark me-1 mb-1">${signal}</span>`
-                                ).join('') : 
-                                '<span class="text-muted">No active signals</span>'
-                            }
-                        </div>
+//                     <div class="col-md-6">
+//                         <h6>Volume Signals</h6>
+//                         <div class="mb-3">
+//                             ${signals.length > 0 ? 
+//                                 signals.map(signal => 
+//                                     `<span class="badge bg-warning text-dark me-1 mb-1">${signal}</span>`
+//                                 ).join('') : 
+//                                 '<span class="text-muted">No active signals</span>'
+//                             }
+//                         </div>
                         
-                        <h6>Volume Spikes (Recent)</h6>
-                        <div class="table-responsive">
-                            <table class="table table-sm">
-                                <thead>
-                                    <tr>
-                                        <th>Index</th>
-                                        <th>Volume</th>
-                                        <th>Ratio</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    ${spikes.length > 0 ?
-                                        spikes.map(spike => `
-                                            <tr>
-                                                <td>${spike.index}</td>
-                                                <td>${spike.volume.toLocaleString()}</td>
-                                                <td class="${spike.ratio >= 2 ? 'text-success fw-bold' : 'text-warning'}">
-                                                    ${spike.ratio.toFixed(2)}x
-                                                </td>
-                                            </tr>
-                                        `).join('') :
-                                        `<tr><td colspan="3" class="text-muted">No volume spikes detected</td></tr>`
-                                    }
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
+//                         <h6>Volume Spikes (Recent)</h6>
+//                         <div class="table-responsive">
+//                             <table class="table table-sm">
+//                                 <thead>
+//                                     <tr>
+//                                         <th>Index</th>
+//                                         <th>Volume</th>
+//                                         <th>Ratio</th>
+//                                     </tr>
+//                                 </thead>
+//                                 <tbody>
+//                                     ${spikes.length > 0 ?
+//                                         spikes.map(spike => `
+//                                             <tr>
+//                                                 <td>${spike.index}</td>
+//                                                 <td>${spike.volume.toLocaleString()}</td>
+//                                                 <td class="${spike.ratio >= 2 ? 'text-success fw-bold' : 'text-warning'}">
+//                                                     ${spike.ratio.toFixed(2)}x
+//                                                 </td>
+//                                             </tr>
+//                                         `).join('') :
+//                                         `<tr><td colspan="3" class="text-muted">No volume spikes detected</td></tr>`
+//                                     }
+//                                 </tbody>
+//                             </table>
+//                         </div>
+//                     </div>
+//                 </div>
                 
-                <div class="row mt-3">
-                    <div class="col-12">
-                        <h6>Exchange Volume Distribution</h6>
-                        <div class="d-flex flex-wrap gap-2">
-                            ${Object.entries(data.exchange_volumes || {}).map(([exchange, volume]) => `
-                                <div class="bg-light p-2 rounded">
-                                    <small class="text-muted">${exchange}</small><br>
-                                    <strong>${volume.toFixed(2)}</strong>
-                                </div>
-                            `).join('')}
-                        </div>
-                    </div>
-                </div>
+//                 <div class="row mt-3">
+//                     <div class="col-12">
+//                         <h6>Exchange Volume Distribution</h6>
+//                         <div class="d-flex flex-wrap gap-2">
+//                             ${Object.entries(data.exchange_volumes || {}).map(([exchange, volume]) => `
+//                                 <div class="bg-light p-2 rounded">
+//                                     <small class="text-muted">${exchange}</small><br>
+//                                     <strong>${volume.toFixed(2)}</strong>
+//                                 </div>
+//                             `).join('')}
+//                         </div>
+//                     </div>
+//                 </div>
                 
-                <div class="mt-3">
-                    <p class="mb-1">
-                        <strong>Volume-Price Correlation:</strong> 
-                        <span class="${data.volume_price_correlation > 0.5 ? 'text-success' : data.volume_price_correlation < -0.5 ? 'text-danger' : 'text-muted'}">
-                            ${data.volume_price_correlation.toFixed(3)}
-                        </span>
-                    </p>
-                    <small class="text-muted">
-                        ${data.volume_price_correlation > 0.5 ? 'Strong positive correlation (volume leads price)' :
-                          data.volume_price_correlation < -0.5 ? 'Strong negative correlation' :
-                          'Weak or no correlation'}
-                    </small>
-                </div>
-            </div>
-        </div>
-    `;
-}
+//                 <div class="mt-3">
+//                     <p class="mb-1">
+//                         <strong>Volume-Price Correlation:</strong> 
+//                         <span class="${data.volume_price_correlation > 0.5 ? 'text-success' : data.volume_price_correlation < -0.5 ? 'text-danger' : 'text-muted'}">
+//                             ${data.volume_price_correlation.toFixed(3)}
+//                         </span>
+//                     </p>
+//                     <small class="text-muted">
+//                         ${data.volume_price_correlation > 0.5 ? 'Strong positive correlation (volume leads price)' :
+//                           data.volume_price_correlation < -0.5 ? 'Strong negative correlation' :
+//                           'Weak or no correlation'}
+//                     </small>
+//                 </div>
+//             </div>
+//         </div>
+//     `;
+// }
 
-// Real-time monitoring
-function startRealTimeMonitoring() {
-    const enableCheckbox = document.getElementById("enableRealtimeMonitoring");
-    const button = document.getElementById("realtimeMonitorBtn");
+// // Real-time monitoring
+// function startRealTimeMonitoring() {
+//     const enableCheckbox = document.getElementById("enableRealtimeMonitoring");
+//     const button = document.getElementById("realtimeMonitorBtn");
     
-    if (!enableCheckbox.checked) {
-        alert("Please enable real-time monitoring first");
-        return;
-    }
+//     if (!enableCheckbox.checked) {
+//         alert("Please enable real-time monitoring first");
+//         return;
+//     }
     
-    if (realTimeMonitoring) {
-        // Stop monitoring
-        realTimeMonitoring = false;
-        clearInterval(monitoringInterval);
-        button.textContent = "Start Monitoring";
-        button.className = "btn btn-warning w-100";
-        document.getElementById("realTimeAlerts").classList.add("d-none");
-    } else {
-        // Start monitoring
-        realTimeMonitoring = true;
-        button.textContent = "Stop Monitoring";
-        button.className = "btn btn-danger w-100";
-        document.getElementById("realTimeAlerts").classList.remove("d-none");
+//     if (realTimeMonitoring) {
+//         // Stop monitoring
+//         realTimeMonitoring = false;
+//         clearInterval(monitoringInterval);
+//         button.textContent = "Start Monitoring";
+//         button.className = "btn btn-warning w-100";
+//         document.getElementById("realTimeAlerts").classList.add("d-none");
+//     } else {
+//         // Start monitoring
+//         realTimeMonitoring = true;
+//         button.textContent = "Stop Monitoring";
+//         button.className = "btn btn-danger w-100";
+//         document.getElementById("realTimeAlerts").classList.remove("d-none");
         
-        // Start monitoring interval
-        monitoringInterval = setInterval(async () => {
-            await runRealTimeVolumeMonitoring();
-        }, 30000); // Check every 30 seconds
+//         // Start monitoring interval
+//         monitoringInterval = setInterval(async () => {
+//             await runRealTimeVolumeMonitoring();
+//         }, 30000); // Check every 30 seconds
         
-        // Run initial check
-        runRealTimeVolumeMonitoring();
-    }
-}
+//         // Run initial check
+//         runRealTimeVolumeMonitoring();
+//     }
+// }
 
-async function runRealTimeVolumeMonitoring() {
-    try {
-        const res = await fetch(API + "/monitor_volume_changes", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                timeframe: document.getElementById("scanTimeframe").value,
-                alert_threshold: parseFloat(document.getElementById("volumeThreshold").value)
-            })
-        });
+// async function runRealTimeVolumeMonitoring() {
+//     try {
+//         const res = await fetch(API + "/monitor_volume_changes", {
+//             method: "POST",
+//             headers: { "Content-Type": "application/json" },
+//             body: JSON.stringify({
+//                 timeframe: document.getElementById("scanTimeframe").value,
+//                 alert_threshold: parseFloat(document.getElementById("volumeThreshold").value)
+//             })
+//         });
         
-        const data = await res.json();
+//         const data = await res.json();
         
-        if (data.success && data.alerts && data.alerts.length > 0) {
-            displayRealTimeAlerts(data.alerts);
-        }
+//         if (data.success && data.alerts && data.alerts.length > 0) {
+//             displayRealTimeAlerts(data.alerts);
+//         }
         
-    } catch (error) {
-        console.error("Real-time monitoring error:", error);
-    }
-}
+//     } catch (error) {
+//         console.error("Real-time monitoring error:", error);
+//     }
+// }
 
-function displayRealTimeAlerts(alerts) {
-    const container = document.getElementById("alertsContainer");
+// function displayRealTimeAlerts(alerts) {
+//     const container = document.getElementById("alertsContainer");
     
-    // Clear old alerts (keep only last 10)
-    const currentAlerts = container.querySelectorAll(".alert");
-    if (currentAlerts.length >= 10) {
-        currentAlerts[currentAlerts.length - 1].remove();
-    }
+//     // Clear old alerts (keep only last 10)
+//     const currentAlerts = container.querySelectorAll(".alert");
+//     if (currentAlerts.length >= 10) {
+//         currentAlerts[currentAlerts.length - 1].remove();
+//     }
     
-    // Add new alerts at the top
-    alerts.forEach(alert => {
-        const alertDiv = document.createElement("div");
-        alertDiv.className = "alert alert-danger alert-dismissible fade show mb-2";
-        alertDiv.innerHTML = `
-            <strong>🚨 Volume Spike!</strong> ${alert.symbol}
-            <br>
-            <small>Volume increased ${alert.volume_ratio.toFixed(2)}x average</small>
-            <button type="button" class="btn-close btn-sm" data-bs-dismiss="alert"></button>
-        `;
-        container.insertBefore(alertDiv, container.firstChild);
-    });
+//     // Add new alerts at the top
+//     alerts.forEach(alert => {
+//         const alertDiv = document.createElement("div");
+//         alertDiv.className = "alert alert-danger alert-dismissible fade show mb-2";
+//         alertDiv.innerHTML = `
+//             <strong>🚨 Volume Spike!</strong> ${alert.symbol}
+//             <br>
+//             <small>Volume increased ${alert.volume_ratio.toFixed(2)}x average</small>
+//             <button type="button" class="btn-close btn-sm" data-bs-dismiss="alert"></button>
+//         `;
+//         container.insertBefore(alertDiv, container.firstChild);
+//     });
     
-    // Play notification sound (if browser allows)
-    playNotificationSound();
-}
+//     // Play notification sound (if browser allows)
+//     playNotificationSound();
+// }
 
-function playNotificationSound() {
-    // Create a simple notification sound
-    try {
-        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        const oscillator = audioContext.createOscillator();
-        const gainNode = audioContext.createGain();
+// function playNotificationSound() {
+//     // Create a simple notification sound
+//     try {
+//         const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+//         const oscillator = audioContext.createOscillator();
+//         const gainNode = audioContext.createGain();
         
-        oscillator.connect(gainNode);
-        gainNode.connect(audioContext.destination);
+//         oscillator.connect(gainNode);
+//         gainNode.connect(audioContext.destination);
         
-        oscillator.frequency.value = 800;
-        oscillator.type = 'sine';
+//         oscillator.frequency.value = 800;
+//         oscillator.type = 'sine';
         
-        gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
-        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+//         gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
+//         gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
         
-        oscillator.start(audioContext.currentTime);
-        oscillator.stop(audioContext.currentTime + 0.5);
-    } catch (e) {
-        console.log("Audio notification not supported");
-    }
-}
+//         oscillator.start(audioContext.currentTime);
+//         oscillator.stop(audioContext.currentTime + 0.5);
+//     } catch (e) {
+//         console.log("Audio notification not supported");
+//     }
+// }
 
-// Auto-scan when tab opens
-document.querySelector('#mainTabs a[href="#patternScanner"]').addEventListener('shown.bs.tab', function() {
-    // Auto-run scan after a delay
-    setTimeout(() => {
-        scanCandlePatterns();
-    }, 1000);
-});
+// // Auto-scan when tab opens
+// document.querySelector('#mainTabs a[href="#patternScanner"]').addEventListener('shown.bs.tab', function() {
+//     // Auto-run scan after a delay
+//     setTimeout(() => {
+//         scanCandlePatterns();
+//     }, 1000);
+// });
 
-// Stop monitoring when leaving tab
-document.querySelector('#mainTabs a[href="#patternScanner"]').addEventListener('hide.bs.tab', function() {
-    if (realTimeMonitoring) {
-        realTimeMonitoring = false;
-        clearInterval(monitoringInterval);
-        const button = document.getElementById("realtimeMonitorBtn");
-        if (button) {
-            button.textContent = "Start Monitoring";
-            button.className = "btn btn-warning w-100";
-        }
-    }
-});
+// // Stop monitoring when leaving tab
+// document.querySelector('#mainTabs a[href="#patternScanner"]').addEventListener('hide.bs.tab', function() {
+//     if (realTimeMonitoring) {
+//         realTimeMonitoring = false;
+//         clearInterval(monitoringInterval);
+//         const button = document.getElementById("realtimeMonitorBtn");
+//         if (button) {
+//             button.textContent = "Start Monitoring";
+//             button.className = "btn btn-warning w-100";
+//         }
+//     }
+// });
 
-// === BINANCE ALL PAIRS SCANNER FUNCTIONS ===
-let scanLog = [];
-let lastScanResults = null;
+// end
 
-async function updateBinancePairs() {
-    const spinner = document.getElementById("updatePairsSpinner");
-    const button = document.getElementById("updatePairsBtn");
-    
-    // Show loading state
-    spinner.classList.remove("d-none");
-    button.disabled = true;
-    
-    try {
-        const res = await fetch(API + "/update_binance_pairs", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" }
-        });
-        
-        const data = await res.json();
-        
-        if (data.success) {
-            showStatus("pairsUpdateStatus", 
-                `✅ Updated ${data.spot_count} spot and ${data.futures_count} futures pairs`, 
-                "success");
-            
-            // Log
-            addToScanLog({
-                time: new Date().toLocaleTimeString(),
-                symbol: "ALL",
-                status: "SUCCESS",
-                details: `Updated ${data.spot_count + data.futures_count} pairs`
-            });
-        } else {
-            showStatus("pairsUpdateStatus", `❌ Error: ${data.error}`, "danger");
-        }
-        
-    } catch (error) {
-        console.error("Update error:", error);
-        showStatus("pairsUpdateStatus", `❌ Connection error: ${error.message}`, "danger");
-    } finally {
-        // Hide loading state
-        spinner.classList.add("d-none");
-        button.disabled = false;
-    }
-}
 
-async function getBinancePairsStatus() {
-    try {
-        const res = await fetch(API + "/get_binance_pairs?limit=5");
-        const data = await res.json();
-        
-        if (data.success) {
-            showStatus("pairsUpdateStatus", 
-                `📊 Database has ${data.count} active pairs`, 
-                "info");
-        }
-    } catch (error) {
-        console.error("Status check error:", error);
-    }
-}
-
-async function scanAllPairs() {
-    const spinner = document.getElementById("scanAllSpinner");
-    const button = document.getElementById("scanAllBtn");
-    
-    // Show loading state
-    spinner.classList.remove("d-none");
-    button.disabled = true;
-    
-    try {
-        const pairType = document.getElementById("scanPairType").value;
-        const timeframe = document.getElementById("scanTimeframe").value;
-        const volumeThreshold = parseFloat(document.getElementById("volumeThreshold").value);
-        const maxPairs = parseInt(document.getElementById("maxPairs").value);
-        const quoteAsset = document.getElementById("quoteAsset").value;
-        const delayMs = parseInt(document.getElementById("scanDelay").value);
-        
-        const res = await fetch(API + "/scan_all_pairs", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                timeframe: timeframe,
-                pair_type: pairType,
-                quote_asset: quoteAsset || "",
-                max_pairs: maxPairs,
-                delay_ms: delayMs
-            })
-        });
-        
-        const data = await res.json();
-        
-        if (data.success) {
-            // Store results
-            lastScanResults = data;
-            
-            // Update statistics
-            document.getElementById("totalScanned").textContent = data.scanned_pairs;
-            document.getElementById("volumeAlerts").textContent = data.volume_alerts;
-            document.getElementById("patternAlerts").textContent = data.pattern_alerts;
-            
-            // Update dashboard stats
-            document.getElementById("statTotalScanned").textContent = data.scanned_pairs;
-            document.getElementById("statVolumeSpikes").textContent = data.volume_alerts;
-            document.getElementById("statPatternsFound").textContent = data.pattern_alerts;
-            document.getElementById("statSuccessRate").textContent = 
-                `${Math.round((data.successful_scans / data.scanned_pairs) * 100)}%`;
-            
-            // Show/hide alerts sections
-            const volumeSection = document.getElementById("volumeAlertsSection");
-            const patternSection = document.getElementById("patternAlertsSection");
-            
-            if (data.volume_alerts > 0) {
-                volumeSection.classList.remove("d-none");
-                updateVolumeAlerts(data.volume_alerts_list);
-            } else {
-                volumeSection.classList.add("d-none");
-            }
-            
-            if (data.pattern_alerts > 0) {
-                patternSection.classList.remove("d-none");
-                updatePatternAlerts(data.pattern_alerts_list);
-            } else {
-                patternSection.classList.add("d-none");
-            }
-            
-            // Update results table
-            updateScanResultsTable(data.results);
-            
-            // Log success
-            addToScanLog({
-                time: new Date().toLocaleTimeString(),
-                symbol: "SCAN",
-                status: "COMPLETED",
-                volumeRatio: "-",
-                pattern: "-",
-                details: `Scanned ${data.scanned_pairs} pairs, found ${data.volume_alerts} volume spikes`
-            });
-            
-            showStatus("continuousScanStatus", 
-                `✅ Scan completed: ${data.successful_scans}/${data.scanned_pairs} successful`, 
-                "success");
-                
-        } else {
-            showStatus("continuousScanStatus", `❌ Scan failed: ${data.error}`, "danger");
-        }
-        
-    } catch (error) {
-        console.error("Scan error:", error);
-        showStatus("continuousScanStatus", `❌ Connection error: ${error.message}`, "danger");
-    } finally {
-        // Hide loading state
-        spinner.classList.add("d-none");
-        button.disabled = false;
-    }
-}
-
-function updateVolumeAlerts(alerts) {
-    const tbody = document.getElementById("volumeAlertsBody");
-    tbody.innerHTML = '';
-    
-    alerts.forEach(alert => {
-        const row = document.createElement("tr");
-        row.innerHTML = `
-            <td>
-                <strong>${alert.symbol}</strong>
-                <span class="badge ${alert.pair_type === 'spot' ? 'bg-info' : 'bg-warning'} ms-1">
-                    ${alert.pair_type}
-                </span>
-            </td>
-            <td>${alert.pair_type}</td>
-            <td class="text-success fw-bold">${alert.volume_ratio.toFixed(2)}x</td>
-            <td>${formatVolume(alert.current_volume)}</td>
-            <td>${alert.timeframe}</td>
-            <td>
-                <button class="btn btn-sm btn-outline-primary" onclick="analyzeSymbol('${alert.symbol}', '${alert.pair_type}')">
-                    Analyze
-                </button>
-            </td>
-        `;
-        tbody.appendChild(row);
-    });
-}
-
-function updatePatternAlerts(alerts) {
-    const tbody = document.getElementById("patternAlertsBody");
-    tbody.innerHTML = '';
-    
-    alerts.forEach(alert => {
-        const row = document.createElement("tr");
-        const priceChange = alert.price_change || 0;
-        const priceClass = priceChange > 0 ? "text-success" : "text-danger";
-        
-        row.innerHTML = `
-            <td>
-                <strong>${alert.symbol}</strong>
-                <span class="badge ${alert.pair_type === 'spot' ? 'bg-info' : 'bg-warning'} ms-1">
-                    ${alert.pair_type}
-                </span>
-            </td>
-            <td>${alert.pair_type}</td>
-            <td><span class="badge bg-warning text-dark">${alert.pattern}</span></td>
-            <td class="${priceClass}">${priceChange > 0 ? '+' : ''}${priceChange.toFixed(2)}%</td>
-            <td>${alert.current_price?.toFixed(6) || 'N/A'}</td>
-            <td>
-                <button class="btn btn-sm btn-outline-primary" onclick="analyzeSymbol('${alert.symbol}', '${alert.pair_type}')">
-                    Analyze
-                </button>
-            </td>
-        `;
-        tbody.appendChild(row);
-    });
-}
-
-function updateScanResultsTable(results) {
-    const tbody = document.getElementById("scanResultsBody");
-    
-    if (!results || results.length === 0) {
-        tbody.innerHTML = `
-            <tr>
-                <td colspan="9" class="text-center text-muted">
-                    No matching symbols found. Try adjusting your criteria.
-                </td>
-            </tr>
-        `;
-        return;
-    }
-    
-    tbody.innerHTML = '';
-    
-    results.forEach((result, index) => {
-        // Determine volume ratio color
-        let volumeRatioClass = "text-muted";
-        if (result.volume_ratio >= 3) {
-            volumeRatioClass = "text-success fw-bold";
-        } else if (result.volume_ratio >= 2) {
-            volumeRatioClass = "text-warning";
-        }
-        
-        // Determine price change color
-        const priceChange = result.price_change || 0;
-        let priceChangeClass = "text-muted";
-        if (priceChange > 0) {
-            priceChangeClass = "text-success";
-        } else if (priceChange < 0) {
-            priceChangeClass = "text-danger";
-        }
-        
-        // Format patterns
-        let patternsHtml = "None";
-        if (result.pattern) {
-            patternsHtml = `<span class="badge bg-warning text-dark">${result.pattern}</span>`;
-        }
-        
-        const row = document.createElement("tr");
-        row.innerHTML = `
-            <td>${index + 1}</td>
-            <td>
-                <strong>${result.symbol}</strong>
-                <span class="badge ${result.pair_type === 'spot' ? 'bg-info' : 'bg-warning'} ms-1">
-                    ${result.pair_type}
-                </span>
-            </td>
-            <td>${result.pair_type}</td>
-            <td>${result.current_price?.toFixed(6) || 'N/A'}</td>
-            <td class="${priceChangeClass}">
-                ${priceChange > 0 ? '+' : ''}${priceChange.toFixed(2)}%
-            </td>
-            <td class="${volumeRatioClass}">
-                ${result.volume_ratio?.toFixed(2) || 'N/A'}x
-            </td>
-            <td>${patternsHtml}</td>
-            <td>
-                <span class="badge ${result.volume_ratio >= 2 ? 'bg-success' : result.volume_ratio >= 1.5 ? 'bg-warning' : 'bg-secondary'}">
-                    ${result.volume_ratio >= 2 ? 'SPIKE' : result.volume_ratio >= 1.5 ? 'HIGH' : 'NORMAL'}
-                </span>
-            </td>
-            <td>
-                <button class="btn btn-sm btn-primary" onclick="analyzeSymbol('${result.symbol}', '${result.pair_type}')">
-                    Analyze
-                </button>
-            </td>
-        `;
-        tbody.appendChild(row);
-    });
-}
-
-function addToScanLog(entry) {
-    const tbody = document.getElementById("scanLogBody");
-    
-    // Create new row
-    const row = document.createElement("tr");
-    
-    // Determine status badge
-    let statusBadge = "bg-secondary";
-    if (entry.status === "SUCCESS" || entry.status === "COMPLETED") {
-        statusBadge = "bg-success";
-    } else if (entry.status === "ERROR") {
-        statusBadge = "bg-danger";
-    }
-    
-    row.innerHTML = `
-        <td>${entry.time}</td>
-        <td><small>${entry.symbol}</small></td>
-        <td><span class="badge ${statusBadge}">${entry.status}</span></td>
-        <td>${entry.volumeRatio || "-"}</td>
-        <td>${entry.pattern || "-"}</td>
-        <td><small>${entry.details}</small></td>
-    `;
-    
-    // Insert at top
-    if (tbody.firstChild && tbody.firstChild.textContent.includes('No scan data')) {
-        tbody.innerHTML = '';
-    }
-    tbody.insertBefore(row, tbody.firstChild);
-    
-    // Keep only last 15 entries
-    const rows = tbody.getElementsByTagName('tr');
-    if (rows.length > 15) {
-        tbody.removeChild(rows[rows.length - 1]);
-    }
-    
-    // Add to memory log
-    scanLog.unshift(entry);
-    if (scanLog.length > 50) {
-        scanLog.pop();
-    }
-}
-
-async function analyzeSymbol() {
-    const symbol = document.getElementById("signalSymbol").value.trim();
-    const timeframe = document.getElementById("signalTimeframe").value;
-    
-    if (!symbol) {
-        showAlert("signalAlert", "Please enter a symbol", "danger");
-        return;
-    }
-    
-    showAlert("signalAlert", `Analyzing ${symbol} ${timeframe}...`, "info");
-    
-    try {
-        const res = await fetch(API + "/analyze_symbol", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ 
-                symbol: symbol.toUpperCase().replace(/[-_]/g, '/'), 
-                timeframe: timeframe 
-            })
-        });
-        
-        const json = await res.json();
-        
-        if (!json.success) {
-            showAlert("signalAlert", json.error || "Failed to analyze symbol", "danger");
-            return;
-        }
-        
-        // Safely handle the response
-        let cls = "signal-neutral";
-        const signalText = json.signal || "NEUTRAL";
-        
-        if (signalText.includes("STRONG_BULLISH") || signalText.includes("BULLISH")) {
-            cls = signalText.includes("STRONG") ? "signal-strong-bullish" : "signal-bullish";
-        } else if (signalText.includes("STRONG_BEARISH") || signalText.includes("BEARISH")) {
-            cls = signalText.includes("STRONG") ? "signal-bearish" : "signal-bearish";
-        } else if (signalText.includes("WATCH_")) {
-            cls = "signal-watch";
-        }
-        
-        const d = json;
-        const ind = d.indicators || {};
-        const c = d.last_candle || {};
-        
-        const html = `
-            <div class="card">
-                <div class="card-header">
-                    <strong>${d.symbol || symbol}</strong> - ${d.timeframe || timeframe} Analysis
-                </div>
-                <div class="card-body">
-                    <div class="row">
-                        <div class="col-md-6">
-                            <p><strong>Last Candle:</strong> ${c.time_utc || 'N/A'}</p>
-                            <table class="table table-sm">
-                                <tr>
-                                    <td>Open:</td><td>${c.open ? parseFloat(c.open).toFixed(4) : 'N/A'}</td>
-                                    <td>High:</td><td>${c.high ? parseFloat(c.high).toFixed(4) : 'N/A'}</td>
-                                </tr>
-                                <tr>
-                                    <td>Low:</td><td>${c.low ? parseFloat(c.low).toFixed(4) : 'N/A'}</td>
-                                    <td>Close:</td><td>${c.close ? parseFloat(c.close).toFixed(4) : 'N/A'}</td>
-                                </tr>
-                                <tr>
-                                    <td>Volume:</td><td colspan="3">${c.volume ? parseInt(c.volume).toLocaleString() : 'N/A'}</td>
-                                </tr>
-                            </table>
-                        </div>
-                        <div class="col-md-6">
-                            <p><strong>Indicators:</strong></p>
-                            <table class="table table-sm">
-                                <tr>
-                                    <td>RSI(14):</td>
-                                    <td class="${ind.rsi < 30 ? 'text-success' : ind.rsi > 70 ? 'text-danger' : ''}">
-                                        ${ind.rsi ? ind.rsi.toFixed(2) : "N/A"}
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td>MACD:</td><td>${ind.macd ? ind.macd.toFixed(4) : "N/A"}</td>
-                                </tr>
-                                <tr>
-                                    <td>Signal:</td><td>${ind.macd_signal ? ind.macd_signal.toFixed(4) : "N/A"}</td>
-                                </tr>
-                                <tr>
-                                    <td>EMA20:</td><td>${ind.ema20 ? ind.ema20.toFixed(4) : "N/A"}</td>
-                                </tr>
-                                <tr>
-                                    <td>EMA50:</td><td>${ind.ema50 ? ind.ema50.toFixed(4) : "N/A"}</td>
-                                </tr>
-                            </table>
-                        </div>
-                    </div>
-                    
-                    <div class="mt-3 text-center">
-                        <div class="${cls} p-3 rounded">
-                            <h4>${d.signal || 'NEUTRAL'}</h4>
-                            <p class="mb-1">Bias: ${d.bias || 'neutral'}</p>
-                            <p class="mb-1">Score: ${d.score || 0}/100</p>
-                            ${d.reasons && d.reasons.length > 0 ? 
-                                `<p class="mb-0"><small>${d.reasons.join(', ')}</small></p>` : 
-                                ''}
-                        </div>
-                    </div>
-                </div>
-            </div>
-        `;
-        
-        document.getElementById("signalDetails").innerHTML = html;
-        showAlert("signalAlert", "Analysis completed", "success");
-        
-    } catch (e) {
-        console.error("Analyze symbol error:", e);
-        showAlert("signalAlert", "Error: " + e.message, "danger");
-    }
-}
-
-async function startContinuousScan() {
-    try {
-        const interval = parseInt(document.getElementById("scanInterval").value);
-        
-        const res = await fetch(API + "/continuous_scan", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                interval: interval,
-                max_pairs: 50,
-                quote_asset: document.getElementById("quoteAsset").value
-            })
-        });
-        
-        const data = await res.json();
-        
-        if (data.success) {
-            showStatus("continuousScanStatus", 
-                `✅ Continuous scan started. Scanning every ${interval} minutes.`, 
-                "success");
-            
-            // Update button states
-            document.getElementById("continuousScanBtn").disabled = true;
-            document.getElementById("stopScanBtn").disabled = false;
-            
-            // Start periodic status checks
-            startStatusMonitoring();
-            
-        } else {
-            showStatus("continuousScanStatus", `❌ Error: ${data.error}`, "danger");
-        }
-        
-    } catch (error) {
-        console.error("Start scan error:", error);
-        showStatus("continuousScanStatus", `❌ Connection error: ${error.message}`, "danger");
-    }
-}
-
-async function stopContinuousScan() {
-    try {
-        const res = await fetch(API + "/stop_continuous_scan", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" }
-        });
-        
-        const data = await res.json();
-        
-        if (data.success) {
-            showStatus("continuousScanStatus", "⏹️ Continuous scan stopped", "info");
-            
-            // Update button states
-            document.getElementById("continuousScanBtn").disabled = false;
-            document.getElementById("stopScanBtn").disabled = true;
-            
-        }
-        
-    } catch (error) {
-        console.error("Stop scan error:", error);
-    }
-}
-
-async function getScanStatus() {
-    try {
-        const res = await fetch(API + "/get_scan_status");
-        const data = await res.json();
-        
-        if (data.success) {
-            if (data.active) {
-                const nextScan = new Date(data.config.next_scan);
-                const now = new Date();
-                const minutesLeft = Math.round((nextScan - now) / (1000 * 60));
-                
-                showStatus("continuousScanStatus", 
-                    `🔄 Scan active. Next scan in ${minutesLeft} minutes.`, 
-                    "info");
-            }
-        }
-    } catch (error) {
-        console.error("Status check error:", error);
-    }
-}
-
-function startStatusMonitoring() {
-    // Check status every 30 seconds
-    if (window.statusInterval) {
-        clearInterval(window.statusInterval);
-    }
-    
-    window.statusInterval = setInterval(() => {
-        getScanStatus();
-    }, 30000);
-}
-
-function showStatus(elementId, message, type = "info") {
-    const element = document.getElementById(elementId);
-    if (element) {
-        element.innerHTML = `
-            <div class="alert alert-${type} alert-dismissible fade show">
-                ${message}
-                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-            </div>
-        `;
-    }
-}
-
-function formatVolume(volume) {
-    if (volume >= 1000000) {
-        return (volume / 1000000).toFixed(2) + 'M';
-    } else if (volume >= 1000) {
-        return (volume / 1000).toFixed(2) + 'K';
-    }
-    return volume.toFixed(2);
-}
-
-// Auto-run database check when tab opens
-document.querySelector('#mainTabs a[href="#patternScanner"]').addEventListener('shown.bs.tab', function() {
-    // Check database status after a delay
-    setTimeout(() => {
-        getBinancePairsStatus();
-    }, 1000);
-});
-
-// Stop monitoring when leaving tab
-document.querySelector('#mainTabs a[href="#patternScanner"]').addEventListener('hide.bs.tab', function() {
-    if (window.statusInterval) {
-        clearInterval(window.statusInterval);
-        window.statusInterval = null;
-    }
-});
 </script>
+
 </body>
 </html>
