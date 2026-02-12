@@ -1264,172 +1264,144 @@
         
         <!-- Sector Rotation Start -->
          <!-- SECTOR ROTATION -->
-<!-- ENHANCED SECTOR ROTATION -->
 <div class="tab-pane fade" id="sectorRotation">
-    <h4 class="mb-3">📊 Sector Rotation Analysis (Binance Data)</h4>
+    <h4 class="mb-3">📊 Sector Rotation Analysis</h4>
     
-    <!-- Data Management -->
-    <div class="card mb-4 border-primary">
+    <!-- Explanation -->
+    <div class="alert alert-info mb-4">
+        <h5>How Sector Rotation Works:</h5>
+        <p class="mb-1">When a coin in a specific sector (DeFi, Gaming, AI, etc.) experiences significant price increase, 
+        capital often rotates to other coins in the same sector with similar or lower market capitalization.</p>
+        <p class="mb-0">This tool identifies pumped coins and finds potential rotation candidates in the same sector.</p>
+    </div>
+    
+    <!-- Controls -->
+    <div class="card mb-4">
         <div class="card-header bg-primary text-white">
-            <h5 class="mb-0">1. Update Binance Sector Data</h5>
+            <h5 class="mb-0">Analysis Parameters</h5>
         </div>
         <div class="card-body">
-            <p class="mb-3">First, fetch the latest coin categories and sectors from Binance:</p>
-            <div class="row mb-3">
-                <div class="col-md-6">
-                    <button class="btn btn-success w-100" onclick="fetchBinanceCategories()" id="fetchCategoriesBtn">
-                        <span class="spinner-border spinner-border-sm d-none" id="fetchCategoriesSpinner"></span>
-                        Fetch Binance Categories
-                    </button>
-                    <small class="text-muted">Fetches all coins by category from Binance (takes 30-60 seconds)</small>
-                </div>
-                <div class="col-md-6">
-                    <button class="btn btn-info w-100" onclick="loadCategoriesFromDB()">
-                        Load From Database
-                    </button>
-                    <small class="text-muted">Load previously fetched categories</small>
-                </div>
-            </div>
-            <div id="categoryFetchStatus" class="mt-3"></div>
-        </div>
-    </div>
-    
-    <!-- Category Browser -->
-    <div class="card mb-4">
-        <div class="card-header bg-info text-white">
-            <h5 class="mb-0">2. Browse Categories & Coins</h5>
-        </div>
-        <div class="card-body">
-            <div class="row mb-3">
+            <div class="row g-3">
                 <div class="col-md-4">
-                    <label class="form-label">Select Category</label>
-                    <select id="categorySelect" class="form-select" onchange="loadCoinsByCategory()">
-                        <option value="">All Categories</option>
-                        <!-- Will be populated by JavaScript -->
-                    </select>
+                    <label class="form-label">Specific Symbol (Optional)</label>
+                    <input id="sectorSymbol" class="form-control" placeholder="e.g., UNI/USDT (leave empty for all)">
                 </div>
-                <div class="col-md-5">
-                    <label class="form-label">Search Coins</label>
-                    <input type="text" id="coinSearch" class="form-control" placeholder="Search by symbol or name..." 
-                           onkeyup="searchCoins()">
-                </div>
-                <div class="col-md-3">
-                    <label class="form-label">Coins per page</label>
-                    <select id="pageSize" class="form-select" onchange="loadCoinsByCategory()">
-                        <option value="10">10</option>
-                        <option value="20" selected>20</option>
-                        <option value="50">50</option>
-                        <option value="100">100</option>
-                    </select>
-                </div>
-            </div>
-            
-            <div id="categoryOverview" class="mt-3">
-                <p class="text-muted">Select a category or search to browse coins</p>
-            </div>
-        </div>
-    </div>
-    
-    <!-- Coin Details Viewer -->
-    <div class="card mb-4" id="coinDetailsCard" style="display: none;">
-        <div class="card-header">
-            <h5 class="mb-0" id="coinDetailsTitle">Coin Details</h5>
-        </div>
-        <div class="card-body" id="coinDetailsBody">
-            <!-- Will be populated by JavaScript -->
-        </div>
-    </div>
-    
-    <!-- Sector Rotation Analysis -->
-    <div class="card mb-4">
-        <div class="card-header bg-success text-white">
-            <h5 class="mb-0">3. Run Sector Rotation Analysis</h5>
-        </div>
-        <div class="card-body">
-            <p class="mb-3">Find rotation opportunities when a coin pumps in a specific sector:</p>
-            
-            <div class="row g-3 mb-3">
                 <div class="col-md-4">
-                    <label class="form-label">Pumped Coin Symbol</label>
-                    <input id="sectorSymbol" class="form-control" placeholder="e.g., UNI/USDT (leave empty for all gainers)">
-                </div>
-                <div class="col-md-3">
-                    <label class="form-label">Min % Gain</label>
+                    <label class="form-label">Minimum Price Change</label>
                     <div class="input-group">
-                        <input type="number" id="minPriceChange" class="form-control" value="15" min="5" max="100">
+                        <input type="number" id="minPriceChange" class="form-control" value="10" min="5" max="100">
                         <span class="input-group-text">%</span>
                     </div>
+                    <small class="text-muted">Minimum % gain to consider as "pumped"</small>
                 </div>
-                <div class="col-md-3">
-                    <label class="form-label">Category Filter</label>
-                    <select id="sectorCategoryFilter" class="form-select">
-                        <option value="">All Categories</option>
-                        <!-- Will be populated by JavaScript -->
+                <div class="col-md-4">
+                    <label class="form-label">Max Market Cap</label>
+                    <select id="maxMarketCap" class="form-select">
+                        <option value="10000000">$10M</option>
+                        <option value="50000000">$50M</option>
+                        <option value="100000000" selected>$100M</option>
+                        <option value="500000000">$500M</option>
+                        <option value="1000000000">$1B</option>
+                        <option value="5000000000">$5B</option>
                     </select>
                 </div>
-                <div class="col-md-2 d-flex align-items-end">
-                    <button class="btn btn-primary w-100" onclick="runEnhancedSectorRotation()" id="sectorRotationBtn">
+            </div>
+            
+            <div class="row mt-3">
+                <div class="col-md-8">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="filterByVolume" checked>
+                        <label class="form-check-label" for="filterByVolume">
+                            Filter by volume (minimum $100k 24h volume)
+                        </label>
+                    </div>
+                </div>
+                <div class="col-md-4 d-flex align-items-end">
+                    <button class="btn btn-primary w-100" onclick="runSectorRotationAnalysis()" id="sectorRotationBtn">
                         <span class="spinner-border spinner-border-sm d-none" id="sectorSpinner"></span>
-                        Find Rotations
+                        Analyze Sector Rotation
                     </button>
                 </div>
-            </div>
-            
-            <div class="form-check mb-3">
-                <input class="form-check-input" type="checkbox" id="useBinanceData" checked>
-                <label class="form-check-label" for="useBinanceData">
-                    Use Binance category data (more accurate)
-                </label>
-            </div>
-            
-            <div id="enhancedSectorResults" class="mt-3" style="display: none;">
-                <!-- Results will be displayed here -->
             </div>
         </div>
     </div>
     
-    <!-- Statistics -->
+    <!-- Sector Overview -->
     <div class="card mb-4">
-        <div class="card-header">
-            <h5 class="mb-0">Sector Statistics</h5>
+        <div class="card-header bg-info text-white">
+            <h5 class="mb-0">Sector Overview</h5>
         </div>
         <div class="card-body">
-            <div class="row" id="sectorStats">
-                <div class="col-md-3 text-center">
-                    <div class="card h-100">
-                        <div class="card-body">
-                            <h6 class="card-title">Total Categories</h6>
-                            <div class="display-4" id="statCategories">0</div>
-                            <small class="text-muted">Unique sectors</small>
-                        </div>
-                    </div>
+            <div class="row">
+                <div class="col-md-6">
+                    <button class="btn btn-sm btn-outline-info mb-3" onclick="getSectorCoins()">
+                        Load All Sectors
+                    </button>
                 </div>
-                <div class="col-md-3 text-center">
-                    <div class="card h-100">
-                        <div class="card-body">
-                            <h6 class="card-title">Total Coins</h6>
-                            <div class="display-4" id="statTotalCoins">0</div>
-                            <small class="text-muted">Tracked coins</small>
-                        </div>
-                    </div>
+                <div class="col-md-6 text-end">
+                    <small class="text-muted">Market cap estimates based on volume</small>
                 </div>
-                <div class="col-md-3 text-center">
-                    <div class="card h-100">
-                        <div class="card-body">
-                            <h6 class="card-title">Avg Coins/Category</h6>
-                            <div class="display-4" id="statAvgCoins">0</div>
-                            <small class="text-muted">Per sector</small>
-                        </div>
-                    </div>
+            </div>
+            <div id="sectorOverview" class="mt-3">
+                <p class="text-muted">Click "Load All Sectors" to see crypto sectors and their top coins.</p>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Analysis Results -->
+    <div id="sectorResults" class="mb-4" style="display: none;">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Rotation Analysis Results</h5>
+                <div>
+                    <span class="badge bg-primary me-2" id="pumpedCoinsCount">0</span>
+                    <span class="badge bg-success" id="candidatesCount">0</span>
                 </div>
-                <div class="col-md-3 text-center">
-                    <div class="card h-100">
-                        <div class="card-body">
-                            <h6 class="card-title">Data Freshness</h6>
-                            <div class="display-4" id="statFreshness">-</div>
-                            <small class="text-muted">Last updated</small>
-                        </div>
-                    </div>
+            </div>
+            <div class="card-body">
+                <div id="sectorAnalysisResults">
+                    <!-- Results will be displayed here -->
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Quick Actions -->
+    <div class="card">
+        <div class="card-header">
+            <h5 class="mb-0">Quick Actions</h5>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-4">
+                    <button class="btn btn-outline-primary w-100 mb-2" onclick="analyzeSector('DeFi')">
+                        Analyze DeFi Sector
+                    </button>
+                </div>
+                <div class="col-md-4">
+                    <button class="btn btn-outline-success w-100 mb-2" onclick="analyzeSector('AI')">
+                        Analyze AI Sector
+                    </button>
+                </div>
+                <div class="col-md-4">
+                    <button class="btn btn-outline-warning w-100 mb-2" onclick="analyzeSector('Gaming')">
+                        Analyze Gaming Sector
+                    </button>
+                </div>
+                <div class="col-md-4">
+                    <button class="btn btn-outline-danger w-100 mb-2" onclick="analyzeSector('Meme')">
+                        Analyze Meme Sector
+                    </button>
+                </div>
+                <div class="col-md-4">
+                    <button class="btn btn-outline-info w-100 mb-2" onclick="analyzeSector('Layer1')">
+                        Analyze Layer 1
+                    </button>
+                </div>
+                <div class="col-md-4">
+                    <button class="btn btn-outline-secondary w-100 mb-2" onclick="analyzeSector('Layer2')">
+                        Analyze Layer 2
+                    </button>
                 </div>
             </div>
         </div>
@@ -4356,589 +4328,6 @@ document.querySelector('#mainTabs a[href="#sectorRotation"]').addEventListener('
     setTimeout(getSectorCoins, 500);
 });
 // End
-
-
-
-// ========= BINANCE SECTOR DATA FUNCTIONS =========
-
-async function fetchBinanceCategories() {
-    const btn = document.getElementById("fetchCategoriesBtn");
-    const spinner = document.getElementById("fetchCategoriesSpinner");
-    const statusDiv = document.getElementById("categoryFetchStatus");
-    
-    // Show loading
-    btn.disabled = true;
-    spinner.classList.remove("d-none");
-    statusDiv.innerHTML = `
-        <div class="alert alert-info">
-            <strong>Fetching categories from Binance...</strong><br>
-            This may take 30-60 seconds. Please wait.
-        </div>
-    `;
-    
-    try {
-        const res = await fetch(API + "/fetch_binance_categories_with_coins", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                max_coins: 50
-            })
-        });
-        
-        const data = await res.json();
-        
-        if (!data.success) {
-            throw new Error(data.error || "Failed to fetch categories");
-        }
-        
-        statusDiv.innerHTML = `
-            <div class="alert alert-success">
-                <strong>Success!</strong><br>
-                Fetched ${data.total_coins} coins across ${data.total_categories} categories.<br>
-                <small>Categories: ${Object.keys(data.categories).join(", ")}</small>
-            </div>
-        `;
-        
-        // Load categories into dropdowns
-        loadCategoriesFromDB();
-        
-    } catch (error) {
-        console.error("Error fetching categories:", error);
-        statusDiv.innerHTML = `
-            <div class="alert alert-danger">
-                <strong>Error fetching categories:</strong> ${error.message}<br>
-                Please try again or check your internet connection.
-            </div>
-        `;
-    } finally {
-        // Hide loading
-        btn.disabled = false;
-        spinner.classList.add("d-none");
-    }
-}
-
-async function loadCategoriesFromDB() {
-    try {
-        const res = await fetch(API + "/get_coin_categories_from_db");
-        const data = await res.json();
-        
-        if (!data.success) {
-            throw new Error(data.error || "Failed to load categories");
-        }
-        
-        // Update category dropdowns
-        const categorySelect = document.getElementById("categorySelect");
-        const sectorFilter = document.getElementById("sectorCategoryFilter");
-        
-        // Clear existing options except first
-        while (categorySelect.options.length > 1) categorySelect.remove(1);
-        while (sectorFilter.options.length > 1) sectorFilter.remove(1);
-        
-        // Add categories
-        data.categories.forEach(category => {
-            const option1 = document.createElement("option");
-            option1.value = category;
-            option1.textContent = category;
-            categorySelect.appendChild(option1.cloneNode(true));
-            
-            const option2 = option1.cloneNode(true);
-            sectorFilter.appendChild(option2);
-        });
-        
-        // Update statistics
-        document.getElementById("statCategories").textContent = data.total_categories;
-        document.getElementById("statTotalCoins").textContent = data.total_coins;
-        document.getElementById("statAvgCoins").textContent = 
-            data.total_categories > 0 ? Math.round(data.total_coins / data.total_categories) : 0;
-        
-        // Show category overview
-        let overviewHtml = `
-            <div class="alert alert-success">
-                <strong>Loaded ${data.total_categories} categories with ${data.total_coins} coins</strong>
-            </div>
-            
-            <div class="row">
-        `;
-        
-        // Show top 6 categories
-        let categoriesShown = 0;
-        for (const [category, coins] of Object.entries(data.coins_by_category)) {
-            if (categoriesShown >= 6) break;
-            
-            overviewHtml += `
-                <div class="col-md-4 mb-3">
-                    <div class="card h-100">
-                        <div class="card-header">
-                            <h6 class="mb-0">${category}</h6>
-                        </div>
-                        <div class="card-body">
-                            <p class="mb-2"><strong>${coins.length} coins</strong></p>
-                            <div class="small">
-                                ${coins.slice(0, 5).map(coin => 
-                                    `<div class="text-truncate">${coin.symbol} - ${coin.name || ''}</div>`
-                                ).join('')}
-                                ${coins.length > 5 ? `<div class="text-muted">+${coins.length - 5} more...</div>` : ''}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            `;
-            
-            categoriesShown++;
-        }
-        
-        overviewHtml += `</div>`;
-        document.getElementById("categoryOverview").innerHTML = overviewHtml;
-        
-    } catch (error) {
-        console.error("Error loading categories:", error);
-        document.getElementById("categoryOverview").innerHTML = `
-            <div class="alert alert-warning">
-                <strong>No category data found.</strong><br>
-                Please click "Fetch Binance Categories" first to download sector data.
-            </div>
-        `;
-    }
-}
-
-async function loadCoinsByCategory() {
-    const category = document.getElementById("categorySelect").value;
-    const pageSize = parseInt(document.getElementById("pageSize").value);
-    
-    try {
-        const res = await fetch(API + "/search_coins_by_category", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                category: category,
-                page: 1,
-                page_size: pageSize,
-                search: ""
-            })
-        });
-        
-        const data = await res.json();
-        
-        if (!data.success) {
-            throw new Error(data.error || "Failed to load coins");
-        }
-        
-        let html = '';
-        
-        if (data.coins.length === 0) {
-            html = `
-                <div class="alert alert-info">
-                    No coins found ${category ? `in category "${category}"` : ''}
-                </div>
-            `;
-        } else {
-            html = `
-                <div class="alert alert-info">
-                    Showing ${data.coins.length} coins ${category ? `in <strong>${category}</strong>` : ''}
-                    ${data.total_count > data.coins.length ? ` (${data.total_count} total)` : ''}
-                </div>
-                
-                <div class="table-responsive">
-                    <table class="table table-hover table-sm">
-                        <thead>
-                            <tr>
-                                <th>#</th>
-                                <th>Symbol</th>
-                                <th>Name</th>
-                                <th>Category</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-            `;
-            
-            data.coins.forEach((coin, index) => {
-                html += `
-                    <tr>
-                        <td>${index + 1}</td>
-                        <td><strong>${coin.symbol}</strong></td>
-                        <td>${coin.name || 'N/A'}</td>
-                        <td>
-                            <span class="badge bg-info">${coin.category}</span>
-                        </td>
-                        <td>
-                            <button class="btn btn-sm btn-primary me-1" onclick="viewCoinDetails('${coin.symbol}')">
-                                Details
-                            </button>
-                            <button class="btn btn-sm btn-success" onclick="analyzeCoin('${coin.symbol}')">
-                                Analyze
-                            </button>
-                        </td>
-                    </tr>
-                `;
-            });
-            
-            html += `
-                        </tbody>
-                    </table>
-                </div>
-                
-                ${data.total_pages > 1 ? `
-                    <div class="text-center mt-3">
-                        <nav>
-                            <ul class="pagination justify-content-center">
-                                <li class="page-item disabled">
-                                    <span class="page-link">Page 1 of ${data.total_pages}</span>
-                                </li>
-                                <li class="page-item">
-                                    <button class="page-link" onclick="loadMoreCoins(2)">Next</button>
-                                </li>
-                            </ul>
-                        </nav>
-                    </div>
-                ` : ''}
-            `;
-        }
-        
-        document.getElementById("categoryOverview").innerHTML = html;
-        
-    } catch (error) {
-        console.error("Error loading coins:", error);
-        document.getElementById("categoryOverview").innerHTML = `
-            <div class="alert alert-danger">
-                Error loading coins: ${error.message}
-            </div>
-        `;
-    }
-}
-
-async function viewCoinDetails(symbol) {
-    try {
-        const res = await fetch(API + "/get_coin_details", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ symbol: symbol })
-        });
-        
-        const data = await res.json();
-        
-        if (!data.success) {
-            throw new Error(data.error || "Failed to get coin details");
-        }
-        
-        // Show details card
-        document.getElementById("coinDetailsCard").style.display = "block";
-        document.getElementById("coinDetailsTitle").textContent = `${symbol} Details`;
-        
-        let categoriesHtml = '';
-        if (data.categories && data.categories.length > 0) {
-            categoriesHtml = data.categories.map(cat => 
-                `<span class="badge bg-info me-1 mb-1">${cat}</span>`
-            ).join('');
-        }
-        
-        document.getElementById("coinDetailsBody").innerHTML = `
-            <div class="row">
-                <div class="col-md-8">
-                    <h5>${symbol}</h5>
-                    <p class="text-muted">${data.description || 'No description available'}</p>
-                    
-                    <div class="mb-3">
-                        <strong>Use Case:</strong>
-                        <span class="badge bg-primary ms-2">${data.use_case}</span>
-                    </div>
-                    
-                    <div class="mb-3">
-                        <strong>Categories/Tags:</strong><br>
-                        ${categoriesHtml || '<span class="text-muted">No categories found</span>'}
-                    </div>
-                    
-                    <div class="small text-muted">
-                        Source: ${data.source}<br>
-                        Last updated: ${new Date(data.timestamp || data.last_updated).toLocaleString()}
-                    </div>
-                </div>
-                <div class="col-md-4">
-                    <div class="card">
-                        <div class="card-body">
-                            <h6 class="card-title">Quick Actions</h6>
-                            <button class="btn btn-primary w-100 mb-2" onclick="enhancedAnalyzeSymbolFromGainers('${symbol}')">
-                                Technical Analysis
-                            </button>
-                            <button class="btn btn-success w-100 mb-2" onclick="runSectorRotationForCoin('${symbol}')">
-                                Sector Rotation
-                            </button>
-                            <button class="btn btn-info w-100" onclick="setLiveSymbolFromDetails('${symbol}')">
-                                Set as Live Symbol
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        `;
-        
-        // Scroll to details
-        document.getElementById("coinDetailsCard").scrollIntoView({ behavior: 'smooth' });
-        
-    } catch (error) {
-        console.error("Error viewing coin details:", error);
-        alert(`Error: ${error.message}`);
-    }
-}
-
-function analyzeCoin(symbol) {
-    // Set symbol in signals tab and switch to it
-    document.getElementById("signalSymbol").value = symbol;
-    
-    // Switch to signals tab
-    const signalsTab = document.querySelector('#mainTabs a[href="#signals"]');
-    if (signalsTab) {
-        signalsTab.click();
-    }
-    
-    // Run analysis after a delay
-    setTimeout(() => enhancedAnalyzeSymbol(), 500);
-}
-
-function setLiveSymbolFromDetails(symbol) {
-    document.getElementById("liveSymbol").value = symbol;
-    setLiveSymbol();
-}
-
-async function runEnhancedSectorRotation() {
-    const symbol = document.getElementById("sectorSymbol").value.trim().toUpperCase();
-    const minPriceChange = parseFloat(document.getElementById("minPriceChange").value);
-    const categoryFilter = document.getElementById("sectorCategoryFilter").value;
-    const useBinanceData = document.getElementById("useBinanceData").checked;
-    
-    const spinner = document.getElementById("sectorSpinner");
-    const button = document.getElementById("sectorRotationBtn");
-    const resultsDiv = document.getElementById("enhancedSectorResults");
-    
-    // Show loading
-    spinner.classList.remove("d-none");
-    button.disabled = true;
-    resultsDiv.style.display = "block";
-    resultsDiv.innerHTML = `
-        <div class="alert alert-info">
-            <strong>Running enhanced sector rotation analysis...</strong><br>
-            Using ${useBinanceData ? 'Binance category data' : 'basic sector detection'}
-        </div>
-    `;
-    
-    try {
-        const res = await fetch(API + "/sector_rotation_analysis", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                symbol: symbol || "",
-                min_price_change: minPriceChange,
-                max_market_cap: 1000000000, // $1B
-                max_results: 10,
-                use_binance_data: useBinanceData,
-                category_filter: categoryFilter || ""
-            })
-        });
-        
-        const data = await res.json();
-        
-        if (!data.success) {
-            throw new Error(data.error || "Sector rotation analysis failed");
-        }
-        
-        // Display results
-        displayEnhancedSectorResults(data);
-        
-    } catch (error) {
-        console.error("Enhanced sector rotation error:", error);
-        resultsDiv.innerHTML = `
-            <div class="alert alert-danger">
-                <strong>Error:</strong> ${error.message}
-            </div>
-        `;
-    } finally {
-        // Hide loading
-        spinner.classList.add("d-none");
-        button.disabled = false;
-    }
-}
-
-function displayEnhancedSectorResults(data) {
-    const resultsDiv = document.getElementById("enhancedSectorResults");
-    
-    let html = `
-        <div class="alert alert-success">
-            <strong>Analysis Complete!</strong><br>
-            Found ${data.total_pumped_coins} pumped coins and ${data.total_candidates} rotation candidates
-        </div>
-    `;
-    
-    if (data.results.length === 0) {
-        html += `
-            <div class="alert alert-warning">
-                <strong>No rotation opportunities found!</strong><br>
-                Try lowering the minimum price change or using a different category filter.
-            </div>
-        `;
-    } else {
-        data.results.forEach((result, index) => {
-            const pumped = result.pumped_coin;
-            const candidates = result.rotation_candidates;
-            
-            html += `
-                <div class="card mb-4">
-                    <div class="card-header bg-warning text-dark">
-                        <div class="row">
-                            <div class="col-md-8">
-                                <h5 class="mb-0">
-                                    <span class="badge bg-danger me-2">📈 PUMPED</span>
-                                    ${pumped.symbol} - ${pumped.sector}
-                                </h5>
-                            </div>
-                            <div class="col-md-4 text-end">
-                                <span class="badge bg-success fs-6">
-                                    +${pumped.price_change.toFixed(2)}%
-                                </span>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="card-body">
-                        <div class="row mb-3">
-                            <div class="col-md-6">
-                                <p class="mb-1"><strong>Pumped Coin:</strong> ${pumped.symbol}</p>
-                                <p class="mb-1"><strong>Sector:</strong> ${pumped.sector}</p>
-                                <p class="mb-1"><strong>Price:</strong> $${pumped.price.toFixed(6)}</p>
-                            </div>
-                            <div class="col-md-6">
-                                <p class="mb-1"><strong>24h Change:</strong> +${pumped.price_change.toFixed(2)}%</p>
-                                <p class="mb-1"><strong>Market Cap Est:</strong> $${formatNumber(pumped.estimated_market_cap)}</p>
-                                <p class="mb-0"><strong>Volume:</strong> $${formatNumber(pumped.volume_24h)}</p>
-                            </div>
-                        </div>
-                        
-                        <h6 class="mb-3">📊 Rotation Candidates (${candidates.length} found):</h6>
-            `;
-            
-            if (candidates.length === 0) {
-                html += `
-                    <div class="alert alert-info">
-                        No suitable rotation candidates found in this sector
-                    </div>
-                `;
-            } else {
-                html += `
-                    <div class="table-responsive">
-                        <table class="table table-hover table-sm">
-                            <thead>
-                                <tr>
-                                    <th>Symbol</th>
-                                    <th>Price</th>
-                                    <th>Market Cap</th>
-                                    <th>RSI</th>
-                                    <th>Volume</th>
-                                    <th>Rotation Score</th>
-                                    <th>Recommendation</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                `;
-                
-                candidates.forEach(candidate => {
-                    const rotationClass = candidate.rotation_score >= 70 ? 'table-success' :
-                                         candidate.rotation_score >= 60 ? 'table-info' :
-                                         candidate.rotation_score >= 50 ? 'table-warning' : '';
-                    
-                    html += `
-                        <tr class="${rotationClass}">
-                            <td>
-                                <strong>${candidate.symbol}</strong><br>
-                                <small class="text-muted">${candidate.sector}</small>
-                            </td>
-                            <td>$${candidate.current_price.toFixed(6)}</td>
-                            <td>
-                                $${formatNumber(candidate.estimated_market_cap)}<br>
-                                <small>${(candidate.market_cap_ratio * 100).toFixed(1)}% of pumped</small>
-                            </td>
-                            <td>
-                                <span class="${candidate.rsi < 30 ? 'text-success fw-bold' : candidate.rsi > 70 ? 'text-danger fw-bold' : ''}">
-                                    ${candidate.rsi}
-                                </span>
-                            </td>
-                            <td>
-                                <span class="${candidate.volume_ratio > 1.5 ? 'text-success fw-bold' : ''}">
-                                    ${candidate.volume_ratio.toFixed(2)}x
-                                </span>
-                            </td>
-                            <td>
-                                <div class="progress" style="height: 20px;">
-                                    <div class="progress-bar ${candidate.rotation_score >= 70 ? 'bg-success' : 
-                                                              candidate.rotation_score >= 60 ? 'bg-info' : 
-                                                              candidate.rotation_score >= 50 ? 'bg-warning' : 'bg-secondary'}" 
-                                         style="width: ${candidate.rotation_score}%">
-                                        ${candidate.rotation_score}
-                                    </div>
-                                </div>
-                            </td>
-                            <td>
-                                <span class="badge bg-${candidate.color_class}">
-                                    ${candidate.recommendation}
-                                </span><br>
-                                <small>${candidate.confidence} confidence</small>
-                            </td>
-                            <td>
-                                <button class="btn btn-sm btn-primary" onclick="viewCoinDetails('${candidate.symbol}')">
-                                    Details
-                                </button>
-                            </td>
-                        </tr>
-                    `;
-                });
-                
-                html += `
-                            </tbody>
-                        </table>
-                    </div>
-                `;
-            }
-            
-            html += `
-                    </div>
-                </div>
-            `;
-        });
-    }
-    
-    resultsDiv.innerHTML = html;
-}
-
-function runSectorRotationForCoin(symbol) {
-    document.getElementById("sectorSymbol").value = symbol;
-    runEnhancedSectorRotation();
-}
-
-function searchCoins() {
-    const searchTerm = document.getElementById("coinSearch").value;
-    
-    // In a full implementation, you would call the search API
-    // For now, we'll just trigger a reload with search
-    if (searchTerm.length >= 2) {
-        loadCoinsByCategory();
-    }
-}
-
-function formatNumber(num) {
-    if (num >= 1000000000) {
-        return (num / 1000000000).toFixed(2) + 'B';
-    } else if (num >= 1000000) {
-        return (num / 1000000).toFixed(2) + 'M';
-    } else if (num >= 1000) {
-        return (num / 1000).toFixed(2) + 'K';
-    }
-    return num.toFixed(2);
-}
-
-// Auto-load categories when tab opens
-document.querySelector('#mainTabs a[href="#sectorRotation"]').addEventListener('shown.bs.tab', function() {
-    setTimeout(() => {
-        loadCategoriesFromDB();
-    }, 500);
-});
 
 </script>
 
