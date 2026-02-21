@@ -123,47 +123,22 @@ def save_ohlcv(df, symbol, timeframe):
     print(f"📊 OHLCV Save Summary: {inserted} new candles inserted, {skipped} duplicates skipped")
     return inserted
 # End of Duplicated Candles Code
-def save_daily_gainers_losers(data):
-    """
-    Save gainers/losers data to the database, overwriting any existing records for today.
-    data: list of dicts with keys: symbol, lastPrice (or price), priceChangePercent, quoteVolume
-    """
+def save_daily_gainers_losers(data_list):
     conn = get_conn()
     cur = conn.cursor()
-
-    # 1. Delete all records for today's date
-    today = datetime.now().date()
-    cur.execute("DELETE FROM daily_gainers_losers WHERE DATE(fetched_at) = %s", (today,))
-
-    # 2. Deduplicate by symbol (keep the first occurrence)
-    seen = set()
-    unique_data = []
-    for item in data:
-        sym = item['symbol']
-        if sym not in seen:
-            seen.add(sym)
-            unique_data.append(item)
-
-    # 3. Insert new data
-    insert_sql = """
-        INSERT INTO daily_gainers_losers 
-        (symbol, price, price_change_percent, volume_24h, fetched_at)
-        VALUES (%s, %s, %s, %s, %s)
+    sql = """
+    INSERT INTO daily_gainers_losers (symbol, price, price_change_percent, volume_24h)
+    VALUES (%s, %s, %s, %s)
     """
-    rows = []
-    for item in unique_data:
-        rows.append((
-            item['symbol'],
-            float(item.get('lastPrice', item.get('price', 0))),
-            float(item.get('priceChangePercent', 0)),
-            float(item.get('quoteVolume', 0)),
-            datetime.now()
-        ))
-    cur.executemany(insert_sql, rows)
-    conn.commit()
+    rows = [
+        (d['symbol'], float(d['lastPrice']), float(d['priceChangePercent']), float(d['quoteVolume']))
+        for d in data_list if d.get('lastPrice') is not None and d.get('priceChangePercent') is not None
+    ]
+    if rows:
+        cur.executemany(sql, rows)
+        conn.commit()
     cur.close()
     conn.close()
-    print(f"Saved {len(rows)} gainers/losers records (overwrote previous).")
 
 def get_existing_symbols(exchange_name: str):
     conn = get_conn()

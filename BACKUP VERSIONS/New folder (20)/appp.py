@@ -2756,88 +2756,75 @@ def on_message_gateio(ws, message):
 # ========= BINANCE ALL PAIRS SCANNER =========
 
 def fetch_all_binance_pairs():
-    """Fetch all Binance spot and futures pairs with recent trading volume."""
+    """Fetch all Binance spot and futures pairs with rate limiting"""
     try:
-        # Initialize Binance exchange for spot
+        # Initialize Binance exchange
         binance = ccxt.binance({
             'enableRateLimit': True,
-            'rateLimit': 1000,
-            'options': {'defaultType': 'spot'}
+            'rateLimit': 1000,  # Binance rate limit
+            'options': {
+                'defaultType': 'spot',  # Start with spot
+            }
         })
-        # For futures
+        
+        # Create futures exchange instance
         binance_futures = ccxt.binance({
             'enableRateLimit': True,
             'rateLimit': 1000,
-            'options': {'defaultType': 'future'}
+            'options': {
+                'defaultType': 'future',
+            }
         })
-
+        
         all_pairs = []
-
-        # --- Spot markets ---
+        
+        # Fetch spot markets
         print("Fetching Binance spot markets...")
-        binance.load_markets()
-        spot_markets = binance.markets
-
-        # Fetch tickers for all spot symbols (single request)
-        print("Fetching spot tickers...")
-        spot_tickers = binance.fetch_tickers()
-        active_spot_symbols = set()
-        for symbol, ticker in spot_tickers.items():
-            # Check if the symbol has any trading volume (quoteVolume > 0)
-            if ticker.get('quoteVolume') and ticker['quoteVolume'] > 0:
-                active_spot_symbols.add(symbol)
-
-        print(f"Found {len(active_spot_symbols)} spot symbols with positive 24h volume.")
-
-        for symbol, market in spot_markets.items():
-            if market['active'] and symbol in active_spot_symbols:
-                all_pairs.append({
-                    'symbol': symbol,
-                    'base_asset': market.get('base'),
-                    'quote_asset': market.get('quote'),
-                    'pair_type': 'spot',
-                    'status': 'active'
-                })
-        time.sleep(1)  # rate limit
-
-        # --- Futures markets ---
+        try:
+            binance.load_markets()
+            spot_markets = binance.markets
+            for symbol, market in spot_markets.items():
+                if market['active']:
+                    all_pairs.append({
+                        'symbol': symbol,
+                        'base_asset': market.get('base'),
+                        'quote_asset': market.get('quote'),
+                        'pair_type': 'spot',
+                        'status': 'active' if market.get('active') else 'inactive'
+                    })
+            print(f"Found {len(spot_markets)} spot markets")
+            time.sleep(1)  # Rate limiting
+        except Exception as e:
+            print(f"Error fetching spot markets: {e}")
+        
+        # Fetch futures markets
         print("Fetching Binance futures markets...")
-        binance_futures.load_markets()
-        futures_markets = binance_futures.markets
-
-        # Fetch tickers for futures
-        print("Fetching futures tickers...")
-        futures_tickers = binance_futures.fetch_tickers()
-        active_futures_symbols = set()
-        for symbol, ticker in futures_tickers.items():
-            # For futures, 'quoteVolume' is not always present; use 'baseVolume' * last price as fallback
-            volume_usd = ticker.get('quoteVolume')
-            if volume_usd is None and ticker.get('baseVolume') and ticker.get('last'):
-                volume_usd = ticker['baseVolume'] * ticker['last']
-            if volume_usd and volume_usd > 0:
-                active_futures_symbols.add(symbol)
-
-        print(f"Found {len(active_futures_symbols)} futures symbols with positive 24h volume.")
-
-        for symbol, market in futures_markets.items():
-            if market['active'] and symbol in active_futures_symbols:
-                all_pairs.append({
-                    'symbol': symbol,
-                    'base_asset': market.get('base'),
-                    'quote_asset': market.get('quote', 'USDT'),
-                    'pair_type': 'future',
-                    'status': 'active'
-                })
-        time.sleep(1)
-
-        # --- Save to database ---
+        try:
+            binance_futures.load_markets()
+            futures_markets = binance_futures.markets
+            for symbol, market in futures_markets.items():
+                if market['active']:
+                    all_pairs.append({
+                        'symbol': symbol,
+                        'base_asset': market.get('base'),
+                        'quote_asset': market.get('quote', 'USDT'),
+                        'pair_type': 'future',
+                        'status': 'active' if market.get('active') else 'inactive'
+                    })
+            print(f"Found {len(futures_markets)} futures markets")
+            time.sleep(1)  # Rate limiting
+        except Exception as e:
+            print(f"Error fetching futures markets: {e}")
+        
+        # Save to database
         if all_pairs:
             conn = get_conn()
             cur = conn.cursor()
-
+            
             # Clear existing data
             cur.execute("DELETE FROM binance_all_pairs")
-
+            
+            # Insert new data
             sql = """
             INSERT INTO binance_all_pairs (symbol, base_asset, quote_asset, pair_type, status)
             VALUES (%s, %s, %s, %s, %s)
@@ -2847,19 +2834,20 @@ def fetch_all_binance_pairs():
                 status = VALUES(status),
                 last_updated = CURRENT_TIMESTAMP
             """
-
+            
             rows = [(p['symbol'], p['base_asset'], p['quote_asset'], p['pair_type'], p['status']) 
                    for p in all_pairs]
-
+            
             cur.executemany(sql, rows)
             conn.commit()
+            
             cur.close()
             conn.close()
-
-            print(f"Saved {len(all_pairs)} actively traded Binance pairs to database")
-
+            
+            print(f"Saved {len(all_pairs)} Binance pairs to database")
+        
         return all_pairs
-
+        
     except Exception as e:
         print(f"Error fetching Binance pairs: {e}")
         import traceback
@@ -3886,27 +3874,9 @@ def sync_binance_symbols():
 @app.route("/fetch_gainers_losers", methods=["GET"])
 def fetch_gainers_losers():
     ex = get_exchange()
-    MIN_VOLUME_USD = 10000  # only include pairs with at least $10k 24h volume
     try:
-        # Load markets to get active symbols
-        markets = ex.load_markets()
-        # Build set of active USDT pairs (symbols ending with /USDT)
-        active_usdt_symbols = {
-            symbol for symbol, market in markets.items()
-            if market['active'] and symbol.endswith('/USDT')
-        }
-        print(f"Found {len(active_usdt_symbols)} active USDT pairs")
-
         tickers = ex.fetch_tickers()
-        usdt_pairs = {}
-        for sym, d in tickers.items():
-            # Skip if not an active USDT pair
-            if sym not in active_usdt_symbols:
-                continue
-            quote_vol = d.get("quoteVolume")
-            if quote_vol and isinstance(quote_vol, (int, float)) and quote_vol > MIN_VOLUME_USD:
-                usdt_pairs[sym] = d
-
+        usdt_pairs = {s: d for s, d in tickers.items() if s.endswith("/USDT") and d.get("quoteVolume")}
         all_data = []
         for sym, d in usdt_pairs.items():
             pct = d.get("percentage")
@@ -3918,16 +3888,12 @@ def fetch_gainers_losers():
                 "priceChangePercent": pct,
                 "quoteVolume": d["quoteVolume"],
             })
-
         gainers = sorted(all_data, key=lambda x: x["priceChangePercent"], reverse=True)[:50]
         losers = sorted(all_data, key=lambda x: x["priceChangePercent"])[:50]
-
-        # Save to database, overwriting today's records
         save_daily_gainers_losers(gainers + losers)
-
         return jsonify({
             "success": True,
-            "message": f"Fetched {len(gainers)} gainers & {len(losers)} losers (min volume ${MIN_VOLUME_USD:,.0f}).",
+            "message": f"Fetched {len(gainers)} gainers & {len(losers)} losers.",
             "gainers": len(gainers),
             "losers": len(losers)
         })

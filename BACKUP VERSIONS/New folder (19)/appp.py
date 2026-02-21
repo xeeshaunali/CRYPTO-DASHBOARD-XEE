@@ -1,5 +1,5 @@
 # appp.py – SUPER BOT v4 – ENHANCED HISTORICAL OHLCV FETCHING + volume_diff
-# WITH 10 EXCHANGES FOR LIVE ORDER DATA + FUTURES SUPPORT + LIQUIDATIONS + LONG/SHORT RATIO
+# WITH 10 EXCHANGES FOR LIVE ORDER DATA
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 #import mysql.connector
@@ -43,7 +43,6 @@ CORS(app)
 # Global real-time data with 10 exchanges
 real_time_data = {
     "current_symbol": "BTC/USDT",
-    "market_type": "spot",          # new: spot or future
     "order_book": {
         "binance": {"bids": [], "asks": []},
         "bybit": {"bids": [], "asks": []},
@@ -2177,15 +2176,14 @@ def close_websockets():
     time.sleep(0.5)
 # Removed Kucoin from code kucoin_ws,
 def start_websockets():
-    """Start WebSocket connections for current symbol and market type (spot/future)"""
+    """Start WebSocket connections for current symbol"""
     global binance_ws, bybit_ws, okx_ws, gateio_ws, huobi_ws, kraken_ws, bitget_ws, mexc_ws, coinbase_ws
     
     # Ensure old WebSockets are closed
     close_websockets()
     
     symbol = real_time_data["current_symbol"]
-    market_type = real_time_data.get("market_type", "spot")
-    print(f"Starting WebSockets for symbol: {symbol} (market: {market_type})")
+    print(f"Starting WebSockets for symbol: {symbol}")
     
     # Convert symbol for each exchange
     # Removed KuCoin From Code 
@@ -2207,11 +2205,11 @@ def start_websockets():
         while True:
             try:
                 # Check if symbol has changed (thread should exit)
-                if real_time_data["current_symbol"] != thread_symbol or real_time_data.get("market_type") != market_type:
-                    print(f"Symbol/type changed from {thread_symbol}/{market_type} to {real_time_data['current_symbol']}/{real_time_data.get('market_type')}. Stopping {exchange_name} WebSocket thread.")
+                if real_time_data["current_symbol"] != thread_symbol:
+                    print(f"Symbol changed from {thread_symbol} to {real_time_data['current_symbol']}. Stopping {exchange_name} WebSocket thread.")
                     break
                 
-                print(f"Starting {exchange_name} WebSocket for {thread_symbol} ({market_type})...")
+                print(f"Starting {exchange_name} WebSocket for {thread_symbol}...")
                 
                 # Create WebSocket
                 ws = websocket.WebSocketApp(
@@ -2261,26 +2259,19 @@ def start_websockets():
                 print(f"{exchange_name} WS connection error: {e}")
                 
                 # Check if symbol has changed while reconnecting
-                if real_time_data["current_symbol"] != thread_symbol or real_time_data.get("market_type") != market_type:
-                    print(f"Symbol/type changed from {thread_symbol}/{market_type} to {real_time_data['current_symbol']}/{real_time_data.get('market_type')}. Stopping {exchange_name} WebSocket thread.")
+                if real_time_data["current_symbol"] != thread_symbol:
+                    print(f"Symbol changed from {thread_symbol} to {real_time_data['current_symbol']}. Stopping {exchange_name} WebSocket thread.")
                     break
                     
                 time.sleep(5)  # Wait before reconnecting
 
     # Start WebSocket threads for all exchanges
     # Binance
-    if market_type == 'spot':
-        binance_url = f"wss://stream.binance.com:9443/stream?streams={binance_pair}@depth20@100ms/{binance_pair}@trade"
-    else:
-        # Binance futures
-        binance_url = f"wss://fstream.binance.com/stream?streams={binance_pair}@depth20@100ms/{binance_pair}@aggTrade"
+    binance_url = f"wss://stream.binance.com:9443/stream?streams={binance_pair}@depth20@100ms/{binance_pair}@trade"
     threading.Thread(target=ws_thread, args=('binance', binance_url, None, on_message_binance), daemon=True).start()
     
     # Bybit
-    if market_type == 'spot':
-        bybit_url = "wss://stream.bybit.com/v5/public/spot"
-    else:
-        bybit_url = "wss://stream.bybit.com/v5/public/linear"
+    bybit_url = "wss://stream.bybit.com/v5/public/spot"
     def bybit_open(ws):
         subscribe_msg = {
             "op": "subscribe",
@@ -2290,25 +2281,20 @@ def start_websockets():
             ]
         }
         ws.send(json.dumps(subscribe_msg))
-        print(f"Bybit subscribed to {bybit_pair} ({market_type})")
+        print(f"Bybit subscribed to {bybit_pair}")
     threading.Thread(target=ws_thread, args=('bybit', bybit_url, bybit_open, on_message_bybit), daemon=True).start()
     
     # OKX
-    if market_type == 'spot':
-        okx_url = "wss://ws.okx.com:8443/ws/v5/public"
-        inst_type = "SPOT"
-    else:
-        okx_url = "wss://ws.okx.com:8443/ws/v5/public"  # same URL, different channel
-        inst_type = "SWAP"
+    okx_url = "wss://ws.okx.com:8443/ws/v5/public"
     def okx_open(ws):
         ws.send(json.dumps({"op": "subscribe", "args": [
-            {"channel": "books5", "instId": okx_pair, "instType": inst_type},
-            {"channel": "trades", "instId": okx_pair, "instType": inst_type}
+            {"channel": "books5", "instId": okx_pair},
+            {"channel": "trades", "instId": okx_pair}
         ]}))
-        print(f"OKX subscribed to {okx_pair} ({market_type})")
+        print(f"OKX subscribed to {okx_pair}")
     threading.Thread(target=ws_thread, args=('okx', okx_url, okx_open, on_message_okx), daemon=True).start()
     
-    # Gate.io (spot only)
+    # Gate.io
     gateio_url = "wss://api.gateio.ws/ws/v4/"
     def gateio_open(ws):
         timestamp = int(time.time())
@@ -2355,7 +2341,7 @@ def start_websockets():
         #print(f"KuCoin subscribed to {kucoin_pair}")
     #threading.Thread(target=ws_thread, args=('kucoin', kucoin_url, kucoin_open, on_message_kucoin), daemon=True).start()
     
-    # Huobi (spot only)
+    # Huobi - FIXED: Added gzip decompression
     huobi_url = "wss://api.huobi.pro/ws"
     def huobi_open(ws):
         # Subscribe to order book
@@ -2374,7 +2360,7 @@ def start_websockets():
         print(f"Huobi subscribed to {huobi_pair}")
     threading.Thread(target=ws_thread, args=('huobi', huobi_url, huobi_open, on_message_huobi), daemon=True).start()
     
-    # Kraken (spot only)
+    # Kraken
     kraken_url = "wss://ws.kraken.com"
     def kraken_open(ws):
         # Subscribe to order book
@@ -2395,7 +2381,7 @@ def start_websockets():
         print(f"Kraken subscribed to {kraken_pair}")
     threading.Thread(target=ws_thread, args=('kraken', kraken_url, kraken_open, on_message_kraken), daemon=True).start()
     
-    # Bitget (spot only)
+    # Bitget - FIXED: Added error handling for string index
     bitget_url = "wss://ws.bitget.com/v2/ws/public"
     def bitget_open(ws):
         # Subscribe to order book
@@ -2422,7 +2408,7 @@ def start_websockets():
         print(f"Bitget subscribed to {bitget_pair}")
     threading.Thread(target=ws_thread, args=('bitget', bitget_url, bitget_open, on_message_bitget), daemon=True).start()
     
-    # MEXC (spot only)
+    # MEXC
     mexc_url = "wss://wbs.mexc.com/ws"
     def mexc_open(ws):
         # Subscribe to order book
@@ -2441,7 +2427,7 @@ def start_websockets():
         print(f"MEXC subscribed to {mexc_pair}")
     threading.Thread(target=ws_thread, args=('mexc', mexc_url, mexc_open, on_message_mexc), daemon=True).start()
     
-    # Coinbase (spot only)
+    # Coinbase
     coinbase_url = "wss://ws-feed.exchange.coinbase.com"
     def coinbase_open(ws):
         subscribe_msg = {
@@ -2453,36 +2439,26 @@ def start_websockets():
         print(f"Coinbase subscribed to {coinbase_pair}")
     threading.Thread(target=ws_thread, args=('coinbase', coinbase_url, coinbase_open, on_message_coinbase), daemon=True).start()
     
-    print(f"✅ All 10 exchange WebSockets started for {symbol} ({market_type})")
+    print(f"✅ All 10 exchange WebSockets started for {symbol}")
 
 def on_message_binance(ws, message):
     try:
-        # Get current market type from global data
+        # Verify we're still tracking the right symbol
         current_symbol = real_time_data["current_symbol"].replace('/', '')
-        market_type = real_time_data.get("market_type", "spot")
         data = json.loads(message)
         
         if 'stream' in data:
             stream_name = data['stream']
+            # Only process if this is for our current symbol
             if current_symbol.lower() not in stream_name:
-                return
+                return  # Skip messages for other symbols
             
-            # Depth updates
             if data['stream'].endswith('@depth20@100ms'):
                 book = data['data']
-                if market_type == 'spot':
-                    bids = book.get('bids', [])
-                    asks = book.get('asks', [])
-                else:  # futures uses 'b' and 'a'
-                    bids = book.get('b', [])
-                    asks = book.get('a', [])
-                update_order_book("binance", bids, asks)
-            
-            # Trade updates (spot or futures)
-            elif data['stream'].endswith('@trade') or data['stream'].endswith('@aggTrade'):
+                update_order_book("binance", book['bids'], book['asks'])
+            elif data['stream'].endswith('@trade'):
                 trade = data['data']
-                # Both spot and futures use same fields: p, q, T, m
-                side = 'b' if not trade.get('m', False) else 's'
+                side = 'b' if not trade.get('m') else 's'  # m=true means seller initiated
                 process_trade("binance", {
                     "price": float(trade['p']),
                     "volume": float(trade['q']),
@@ -2491,11 +2467,6 @@ def on_message_binance(ws, message):
                 })
     except Exception as e:
         print(f"Binance message error: {e}")
-        # Optional: print part of the problematic message for debugging
-        try:
-            print(f"Problem message: {message[:200]}")
-        except:
-            pass
 
 def on_message_bybit(ws, message):
     try:
@@ -2756,88 +2727,75 @@ def on_message_gateio(ws, message):
 # ========= BINANCE ALL PAIRS SCANNER =========
 
 def fetch_all_binance_pairs():
-    """Fetch all Binance spot and futures pairs with recent trading volume."""
+    """Fetch all Binance spot and futures pairs with rate limiting"""
     try:
-        # Initialize Binance exchange for spot
+        # Initialize Binance exchange
         binance = ccxt.binance({
             'enableRateLimit': True,
-            'rateLimit': 1000,
-            'options': {'defaultType': 'spot'}
+            'rateLimit': 1000,  # Binance rate limit
+            'options': {
+                'defaultType': 'spot',  # Start with spot
+            }
         })
-        # For futures
+        
+        # Create futures exchange instance
         binance_futures = ccxt.binance({
             'enableRateLimit': True,
             'rateLimit': 1000,
-            'options': {'defaultType': 'future'}
+            'options': {
+                'defaultType': 'future',
+            }
         })
-
+        
         all_pairs = []
-
-        # --- Spot markets ---
+        
+        # Fetch spot markets
         print("Fetching Binance spot markets...")
-        binance.load_markets()
-        spot_markets = binance.markets
-
-        # Fetch tickers for all spot symbols (single request)
-        print("Fetching spot tickers...")
-        spot_tickers = binance.fetch_tickers()
-        active_spot_symbols = set()
-        for symbol, ticker in spot_tickers.items():
-            # Check if the symbol has any trading volume (quoteVolume > 0)
-            if ticker.get('quoteVolume') and ticker['quoteVolume'] > 0:
-                active_spot_symbols.add(symbol)
-
-        print(f"Found {len(active_spot_symbols)} spot symbols with positive 24h volume.")
-
-        for symbol, market in spot_markets.items():
-            if market['active'] and symbol in active_spot_symbols:
-                all_pairs.append({
-                    'symbol': symbol,
-                    'base_asset': market.get('base'),
-                    'quote_asset': market.get('quote'),
-                    'pair_type': 'spot',
-                    'status': 'active'
-                })
-        time.sleep(1)  # rate limit
-
-        # --- Futures markets ---
+        try:
+            binance.load_markets()
+            spot_markets = binance.markets
+            for symbol, market in spot_markets.items():
+                if market['active']:
+                    all_pairs.append({
+                        'symbol': symbol,
+                        'base_asset': market.get('base'),
+                        'quote_asset': market.get('quote'),
+                        'pair_type': 'spot',
+                        'status': 'active' if market.get('active') else 'inactive'
+                    })
+            print(f"Found {len(spot_markets)} spot markets")
+            time.sleep(1)  # Rate limiting
+        except Exception as e:
+            print(f"Error fetching spot markets: {e}")
+        
+        # Fetch futures markets
         print("Fetching Binance futures markets...")
-        binance_futures.load_markets()
-        futures_markets = binance_futures.markets
-
-        # Fetch tickers for futures
-        print("Fetching futures tickers...")
-        futures_tickers = binance_futures.fetch_tickers()
-        active_futures_symbols = set()
-        for symbol, ticker in futures_tickers.items():
-            # For futures, 'quoteVolume' is not always present; use 'baseVolume' * last price as fallback
-            volume_usd = ticker.get('quoteVolume')
-            if volume_usd is None and ticker.get('baseVolume') and ticker.get('last'):
-                volume_usd = ticker['baseVolume'] * ticker['last']
-            if volume_usd and volume_usd > 0:
-                active_futures_symbols.add(symbol)
-
-        print(f"Found {len(active_futures_symbols)} futures symbols with positive 24h volume.")
-
-        for symbol, market in futures_markets.items():
-            if market['active'] and symbol in active_futures_symbols:
-                all_pairs.append({
-                    'symbol': symbol,
-                    'base_asset': market.get('base'),
-                    'quote_asset': market.get('quote', 'USDT'),
-                    'pair_type': 'future',
-                    'status': 'active'
-                })
-        time.sleep(1)
-
-        # --- Save to database ---
+        try:
+            binance_futures.load_markets()
+            futures_markets = binance_futures.markets
+            for symbol, market in futures_markets.items():
+                if market['active']:
+                    all_pairs.append({
+                        'symbol': symbol,
+                        'base_asset': market.get('base'),
+                        'quote_asset': market.get('quote', 'USDT'),
+                        'pair_type': 'future',
+                        'status': 'active' if market.get('active') else 'inactive'
+                    })
+            print(f"Found {len(futures_markets)} futures markets")
+            time.sleep(1)  # Rate limiting
+        except Exception as e:
+            print(f"Error fetching futures markets: {e}")
+        
+        # Save to database
         if all_pairs:
             conn = get_conn()
             cur = conn.cursor()
-
+            
             # Clear existing data
             cur.execute("DELETE FROM binance_all_pairs")
-
+            
+            # Insert new data
             sql = """
             INSERT INTO binance_all_pairs (symbol, base_asset, quote_asset, pair_type, status)
             VALUES (%s, %s, %s, %s, %s)
@@ -2847,19 +2805,20 @@ def fetch_all_binance_pairs():
                 status = VALUES(status),
                 last_updated = CURRENT_TIMESTAMP
             """
-
+            
             rows = [(p['symbol'], p['base_asset'], p['quote_asset'], p['pair_type'], p['status']) 
                    for p in all_pairs]
-
+            
             cur.executemany(sql, rows)
             conn.commit()
+            
             cur.close()
             conn.close()
-
-            print(f"Saved {len(all_pairs)} actively traded Binance pairs to database")
-
+            
+            print(f"Saved {len(all_pairs)} Binance pairs to database")
+        
         return all_pairs
-
+        
     except Exception as e:
         print(f"Error fetching Binance pairs: {e}")
         import traceback
@@ -3745,23 +3704,15 @@ def set_symbol():
     try:
         data = request.json
         new_symbol = data.get('symbol', 'BTC/USDT').upper()
-        new_market_type = data.get('market_type', 'spot').lower()
         
-        if new_market_type not in ['spot', 'future']:
-            return jsonify({"success": False, "error": "market_type must be 'spot' or 'future'"}), 400
-        
-        changed = (new_symbol != real_time_data["current_symbol"] or
-                   new_market_type != real_time_data.get("market_type", "spot"))
-        
-        if changed:
-            print(f"Changing to {new_symbol} ({new_market_type})")
+        if new_symbol != real_time_data["current_symbol"]:
+            print(f"Changing symbol from {real_time_data['current_symbol']} to {new_symbol}")
             
             # FIRST: Stop all WebSockets
             close_websockets()
             
-            # SECOND: Update the current symbol and market type
+            # SECOND: Update the current symbol
             real_time_data["current_symbol"] = new_symbol
-            real_time_data["market_type"] = new_market_type
             
             # THIRD: Clear all existing data
             for ex in real_time_data["order_book"]:
@@ -3775,81 +3726,18 @@ def set_symbol():
             real_time_data["predicted_price"] = 0.0
             real_time_data["last_update"] = 0
             
-            # FOURTH: Start WebSockets with new symbol and market type
+            # FOURTH: Start WebSockets with new symbol
             start_websockets()
             
             # Give WebSockets time to connect
             time.sleep(2)
             
-            print(f"✅ Symbol changed to {new_symbol} ({new_market_type}). WebSockets restarted.")
+            print(f"✅ Symbol changed to {new_symbol}. WebSockets restarted.")
             
-        return jsonify({"success": True, "symbol": new_symbol, "market_type": new_market_type})
+        return jsonify({"success": True, "symbol": new_symbol})
     except Exception as e:
         print(f"Set symbol error: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
-
-# ========= NEW FUTURES ENDPOINTS =========
-@app.route("/long_short_ratio", methods=["GET"])
-def long_short_ratio():
-    """Fetch long/short ratio from Binance Futures"""
-    symbol = request.args.get("symbol", "BTC/USDT").upper().replace('/', '')
-    period = request.args.get("period", "5m")
-    
-    try:
-        # Binance Futures long/short ratio endpoint
-        url = "https://fapi.binance.com/futures/data/globalLongShortAccountRatio"
-        params = {
-            "symbol": symbol,
-            "period": period,
-            "limit": 1
-        }
-        resp = requests.get(url, params=params, timeout=5)
-        if resp.status_code == 200:
-            data = resp.json()
-            if data and len(data) > 0:
-                return jsonify({
-                    "success": True,
-                    "long_short_ratio": float(data[0]["longShortRatio"]),
-                    "long_account": float(data[0]["longAccount"]),
-                    "short_account": float(data[0]["shortAccount"]),
-                    "timestamp": data[0]["timestamp"]
-                })
-        return jsonify({"success": False, "error": "No data from Binance"})
-    except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
-
-@app.route("/liquidation_levels", methods=["POST"])
-def liquidation_levels():
-    """
-    Calculate liquidation prices for long/short positions.
-    Payload: { "symbol": "BTC/USDT", "price": current_price, "leverage": 10 }
-    """
-    payload = request.get_json() or {}
-    symbol = payload.get("symbol", real_time_data["current_symbol"]).upper()
-    price = float(payload.get("price", real_time_data["current_price"]))
-    leverage = float(payload.get("leverage", 10))
-
-    if price <= 0 or leverage <= 0:
-        return jsonify({"success": False, "error": "Invalid price or leverage"})
-
-    # Simple liquidation calculation (cross margin, no maintenance margin considered)
-    # For long: liquidation = price * (1 - 1/leverage)
-    # For short: liquidation = price * (1 + 1/leverage)
-    long_liquidation = price * (1 - 1/leverage)
-    short_liquidation = price * (1 + 1/leverage)
-
-    return jsonify({
-        "success": True,
-        "symbol": symbol,
-        "price": price,
-        "leverage": leverage,
-        "long_liquidation": round(long_liquidation, 6),
-        "short_liquidation": round(short_liquidation, 6)
-    })
-
-# ========= OTHER EXISTING ENDPOINTS =========
-# (Keep all other endpoints exactly as they were in your original code)
-# ...
 
 @app.route("/sync_binance_symbols", methods=["POST"])
 def sync_binance_symbols():
@@ -3886,27 +3774,9 @@ def sync_binance_symbols():
 @app.route("/fetch_gainers_losers", methods=["GET"])
 def fetch_gainers_losers():
     ex = get_exchange()
-    MIN_VOLUME_USD = 10000  # only include pairs with at least $10k 24h volume
     try:
-        # Load markets to get active symbols
-        markets = ex.load_markets()
-        # Build set of active USDT pairs (symbols ending with /USDT)
-        active_usdt_symbols = {
-            symbol for symbol, market in markets.items()
-            if market['active'] and symbol.endswith('/USDT')
-        }
-        print(f"Found {len(active_usdt_symbols)} active USDT pairs")
-
         tickers = ex.fetch_tickers()
-        usdt_pairs = {}
-        for sym, d in tickers.items():
-            # Skip if not an active USDT pair
-            if sym not in active_usdt_symbols:
-                continue
-            quote_vol = d.get("quoteVolume")
-            if quote_vol and isinstance(quote_vol, (int, float)) and quote_vol > MIN_VOLUME_USD:
-                usdt_pairs[sym] = d
-
+        usdt_pairs = {s: d for s, d in tickers.items() if s.endswith("/USDT") and d.get("quoteVolume")}
         all_data = []
         for sym, d in usdt_pairs.items():
             pct = d.get("percentage")
@@ -3918,16 +3788,12 @@ def fetch_gainers_losers():
                 "priceChangePercent": pct,
                 "quoteVolume": d["quoteVolume"],
             })
-
         gainers = sorted(all_data, key=lambda x: x["priceChangePercent"], reverse=True)[:50]
         losers = sorted(all_data, key=lambda x: x["priceChangePercent"])[:50]
-
-        # Save to database, overwriting today's records
         save_daily_gainers_losers(gainers + losers)
-
         return jsonify({
             "success": True,
-            "message": f"Fetched {len(gainers)} gainers & {len(losers)} losers (min volume ${MIN_VOLUME_USD:,.0f}).",
+            "message": f"Fetched {len(gainers)} gainers & {len(losers)} losers.",
             "gainers": len(gainers),
             "losers": len(losers)
         })
@@ -4526,6 +4392,8 @@ def debug_exchanges():
 
 # FUNCTION FOR SECTOR ROTATION ANALYSIS START
 # ========= SECTOR ROTATION ANALYSIS =========
+
+
 
 def get_coin_sector(symbol):
     """Get coin sector/use case - placeholder implementation"""
@@ -5191,8 +5059,6 @@ if __name__ == "__main__":
     print("  • Prediction history tracking")
     print("  • Technical analysis summary")
     print("  • NEW: 10 Exchange Real-Time Analysis")
-    print("  • NEW: Futures Support (Binance, Bybit, OKX)")
-    print("  • NEW: Long/Short Ratio & Liquidation Levels")
     print("=" * 50)
     
     # Test database connection
@@ -5250,7 +5116,7 @@ if __name__ == "__main__":
             print(f"   {exchange}: ⚠️ Waiting for data...")
     
     print("\n✅ Server ready! Use /verify_symbol endpoint to check WebSocket status.")
-    print("✅ Use /set_symbol endpoint to change live tracking symbol and market type.")
+    print("✅ Use /set_symbol endpoint to change live tracking symbol.")
     print("✅ Real-Time Analysis tab ready for 10 exchange order book & trade analysis!")
     print("✅ Enhanced Predictions tab ready for multi-timeframe analysis!")
     
