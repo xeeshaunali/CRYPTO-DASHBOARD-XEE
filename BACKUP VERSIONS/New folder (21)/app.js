@@ -1426,8 +1426,3 @@ document.querySelector('#mainTabs a[href="#patternScanner"]').addEventListener('
 });
 
 // End
-
-
-
-
-

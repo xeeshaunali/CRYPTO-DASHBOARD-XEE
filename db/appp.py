@@ -11,12 +11,6 @@ from functions import save_daily_gainers_losers
 from functions import get_existing_symbols
 from functions import save_new_symbols
 from functions import get_exchange
-from functions import pattern_to_hash
-from functions import pattern_to_string
-from functions import string_to_pattern
-from functions import compute_triplet
-from functions import pattern_distance
-from functions import find_similar_patterns_fuzzy
 # imported from functions file End
 import ccxt
 import pandas as pd
@@ -34,7 +28,7 @@ import numpy as np
 from typing import Dict, List, Tuple, Optional, Any
 import gzip
 # Assuming rotation.py exists with the function
-from rotation import get_rotation_candidates_from_gainers
+from rotations import get_rotation_candidates_from_gainers
 
 app = Flask(__name__)
 CORS(app)

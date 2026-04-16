@@ -96,241 +96,145 @@
             </table>
         </div>
 
-        <!-- SIGNALS TAB – ENHANCED v2 -->
-<!-- SIGNALS TAB – ENHANCED v2 -->
-<div class="tab-pane fade" id="signals">
-
-  <!-- ── Header row ── -->
-  <div class="d-flex align-items-center gap-3 mb-4 flex-wrap">
-    <div style="flex:1;min-width:180px">
-      <label class="form-label fw-semibold mb-1" style="color:#a0aec0;font-size:.78rem;letter-spacing:.07em;text-transform:uppercase">Symbol</label>
-      <input id="sig2Symbol" class="form-control sig2-input" value="BTC/USDT" placeholder="BTC/USDT">
-    </div>
-    <div style="min-width:130px">
-      <label class="form-label fw-semibold mb-1" style="color:#a0aec0;font-size:.78rem;letter-spacing:.07em;text-transform:uppercase">Timeframe</label>
-      <select id="sig2Timeframe" class="form-select sig2-input">
-        <option value="15m">15m</option>
-        <option value="1h">1h</option>
-        <option value="4h" selected>4h</option>
-        <option value="1d">1d</option>
-      </select>
-    </div>
-    <div style="min-width:130px">
-      <label class="form-label fw-semibold mb-1" style="color:#a0aec0;font-size:.78rem;letter-spacing:.07em;text-transform:uppercase">Candles</label>
-      <select id="sig2Limit" class="form-select sig2-input">
-        <option value="50">50</option>
-        <option value="100" selected>100</option>
-        <option value="200">200</option>
-      </select>
-    </div>
-    <div class="d-flex gap-2 align-items-end" style="padding-top:24px">
-      <button class="btn sig2-btn-primary" onclick="runEnhancedSignalV2()" id="sig2RunBtn">
-        <span class="spinner-border spinner-border-sm d-none me-1" id="sig2Spinner"></span>
-        ⚡ Analyze
-      </button>
-      <button class="btn sig2-btn-outline" onclick="runVolumeProfile()">📊 Vol Profile</button>
-      <button class="btn sig2-btn-outline" onclick="runOrderBookFlow()">📖 OB Flow</button>
-      <button class="btn sig2-btn-outline" onclick="runLiquiditySweep()">💧 Liq Sweep</button>
-    </div>
-  </div>
-
-  <div id="sig2Alert"></div>
-
-  <!-- ── Main signal card ── -->
-  <div id="sig2MainCard" class="sig2-card mb-4" style="display:none">
-    <div class="row g-0 align-items-stretch">
-      <!-- Left: Big signal badge -->
-      <div class="col-md-3 d-flex flex-column align-items-center justify-content-center p-4" id="sig2BadgeCol">
-        <div id="sig2SignalBadge" class="sig2-signal-badge mb-2">--</div>
-        <div class="text-center">
-          <div class="sig2-label mb-1">Score</div>
-          <div id="sig2ScoreBar" class="sig2-scorebar mb-2">
-            <div id="sig2ScoreFill" class="sig2-scorebar-fill" style="width:50%"></div>
-          </div>
-          <div id="sig2ScoreNum" class="sig2-big-num">50</div>
-          <div class="sig2-label">/ 100</div>
-        </div>
-        <div class="mt-3 text-center">
-          <div class="sig2-label mb-1">Recommendation</div>
-          <div id="sig2Rec" class="fw-bold" style="color:#e2e8f0;font-size:1rem">--</div>
-        </div>
-      </div>
-
-      <!-- Right: Metrics grid -->
-      <div class="col-md-9 p-4">
-        <div class="row g-3 mb-3">
-          <!-- Price -->
-          <div class="col-6 col-md-3">
-            <div class="sig2-metric-card">
-              <div class="sig2-label">Price</div>
-              <div id="sig2Price" class="sig2-metric-val">--</div>
+        <!-- SIGNALS - ENHANCED -->
+        <div class="tab-pane fade" id="signals">
+            <h4 class="mb-3">📈 Enhanced Technical Analysis & Signals</h4>
+            
+            <!-- Single Symbol Analysis -->
+            <div class="card mb-4">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0">Single Symbol Analysis</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-4">
+                            <input id="signalSymbol" class="form-control" value="BTC/USDT" placeholder="e.g., SOL/USDT">
+                        </div>
+                        <div class="col-md-3">
+                            <select id="signalTimeframe" class="form-select">
+                                <option value="15m">15m</option>
+                                <option value="1h">1h</option>
+                                <option value="4h" selected>4h</option>
+                                <option value="1d">1d</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <button class="btn btn-primary w-100" onclick="enhancedAnalyzeSymbol()">
+                                <span class="spinner-border spinner-border-sm d-none" id="enhancedAnalyzeSpinner"></span>
+                                Analyze
+                            </button>
+                        </div>
+                        <div class="col-md-3">
+                            <button class="btn btn-outline-info w-100" onclick="runMultiTimeframeAnalysis()">
+                                Multi-Timeframe
+                            </button>
+                        </div>
+                    </div>
+                    <div id="signalAlert"></div>
+                </div>
             </div>
-          </div>
-          <!-- RSI -->
-          <div class="col-6 col-md-3">
-            <div class="sig2-metric-card">
-              <div class="sig2-label">RSI (14)</div>
-              <div id="sig2RSI" class="sig2-metric-val">--</div>
-              <div id="sig2RSILabel" class="sig2-sublabel">--</div>
+            
+            <!-- Signal Results -->
+            <div id="enhancedSignalResults" class="mb-4" style="display: none;">
+                <div class="card mb-4">
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-8">
+                                <div id="signalSummary">
+                                    <!-- Signal summary will be displayed here -->
+                                </div>
+                            </div>
+                            <div class="col-md-4 text-center">
+                                <div id="signalIndicator" class="signal-indicator-large">
+                                    <!-- Large signal indicator -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Detailed Indicators -->
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5 class="mb-0">Technical Indicators</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row" id="detailedIndicators">
+                            <!-- Indicators will be displayed here -->
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Trading Levels -->
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5 class="mb-0">Trading Levels & Risk Management</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row" id="tradingLevels">
+                            <!-- Trading levels will be displayed here -->
+                        </div>
+                    </div>
+                </div>
             </div>
-          </div>
-          <!-- MACD -->
-          <div class="col-6 col-md-3">
-            <div class="sig2-metric-card">
-              <div class="sig2-label">MACD</div>
-              <div id="sig2MACD" class="sig2-metric-val">--</div>
-              <div id="sig2MACDLabel" class="sig2-sublabel">--</div>
+            
+            <!-- Gainers Analysis -->
+            <div class="card">
+                <div class="card-header bg-success text-white">
+                    <h5 class="mb-0">Top Gainers Analysis</h5>
+                </div>
+                <div class="card-body">
+                    <p class="mb-3">Analyze today's top gainers for potential trading opportunities:</p>
+                    <div class="row mb-3">
+                        <div class="col-md-4">
+                            <select id="gainerTimeframe" class="form-select">
+                                <option value="4h" selected>4h Timeframe</option>
+                                <option value="1h">1h Timeframe</option>
+                                <option value="1d">1d Timeframe</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <input type="number" id="gainerLimit" class="form-control" value="20" min="5" max="50">
+                        </div>
+                        <div class="col-md-6 d-flex align-items-end">
+                            <button class="btn btn-success w-100" onclick="enhancedLoadGainerSignals()" id="gainerSignalsBtn">
+                                <span class="spinner-border spinner-border-sm d-none" id="gainerSpinner"></span>
+                                Analyze Top Gainers
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div id="enhancedGainerSignalsAlert"></div>
+                    
+                    <div class="table-responsive mt-3">
+                        <table class="table table-bordered table-hover table-sm">
+                            <thead class="table-success">
+                                <tr>
+                                    <th>#</th>
+                                    <th>Symbol</th>
+                                    <th>Price</th>
+                                    <th>24h %</th>
+                                    <th>Volume</th>
+                                    <th>RSI</th>
+                                    <th>MACD</th>
+                                    <th>Trend</th>
+                                    <th>Signal</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="enhancedGainerSignalsBody">
+                                <tr>
+                                    <td colspan="10" class="text-center text-muted">
+                                        Run analysis to see gainer signals
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
-          </div>
-          <!-- ADX -->
-          <div class="col-6 col-md-3">
-            <div class="sig2-metric-card">
-              <div class="sig2-label">ADX / Trend</div>
-              <div id="sig2ADX" class="sig2-metric-val">--</div>
-              <div id="sig2ADXLabel" class="sig2-sublabel">--</div>
-            </div>
-          </div>
         </div>
-
-        <!-- EMA strip -->
-        <div class="sig2-ema-strip mb-3" id="sig2EMAStrip">
-          <span class="sig2-ema-item" id="sig2EMA20"><span class="sig2-ema-label">EMA20</span> <span>--</span></span>
-          <span class="sig2-ema-item" id="sig2EMA50"><span class="sig2-ema-label">EMA50</span> <span>--</span></span>
-          <span class="sig2-ema-item" id="sig2EMA200"><span class="sig2-ema-label">EMA200</span> <span>--</span></span>
-          <span class="sig2-ema-item" id="sig2ATR"><span class="sig2-ema-label">ATR%</span> <span>--</span></span>
-          <span class="sig2-ema-item" id="sig2VolRatio"><span class="sig2-ema-label">Vol Ratio</span> <span>--</span></span>
-        </div>
-
-        <!-- Reasons -->
-        <div class="sig2-reasons-box" id="sig2Reasons">
-          <div class="sig2-label mb-2">Signal Reasons</div>
-          <ul id="sig2ReasonsList" class="mb-0 ps-3" style="color:#cbd5e0;font-size:.85rem"></ul>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- ── Three indicator panels ── -->
-  <div class="row g-3 mb-4">
-
-    <!-- Volume Profile -->
-    <div class="col-md-4">
-      <div class="sig2-panel h-100" id="vpPanel">
-        <div class="sig2-panel-header">
-          <span class="sig2-panel-icon">📊</span>
-          <span>Volume Profile</span>
-          <span class="sig2-panel-badge" id="vpSignalBadge">—</span>
-        </div>
-        <div class="sig2-panel-body" id="vpBody">
-          <p class="sig2-empty-msg">Click "Vol Profile" or "Analyze" to load</p>
-        </div>
-      </div>
-    </div>
-
-    <!-- Order Book Flow -->
-    <div class="col-md-4">
-      <div class="sig2-panel h-100" id="obfPanel">
-        <div class="sig2-panel-header">
-          <span class="sig2-panel-icon">📖</span>
-          <span>Order Book Flow</span>
-          <span class="sig2-panel-badge" id="obfSignalBadge">—</span>
-        </div>
-        <div class="sig2-panel-body" id="obfBody">
-          <p class="sig2-empty-msg">Click "OB Flow" or "Analyze" to load</p>
-        </div>
-      </div>
-    </div>
-
-    <!-- Liquidity Sweep -->
-    <div class="col-md-4">
-      <div class="sig2-panel h-100" id="lsPanel">
-        <div class="sig2-panel-header">
-          <span class="sig2-panel-icon">💧</span>
-          <span>Liquidity Sweep</span>
-          <span class="sig2-panel-badge" id="lsSignalBadge">—</span>
-        </div>
-        <div class="sig2-panel-body" id="lsBody">
-          <p class="sig2-empty-msg">Click "Liq Sweep" or "Analyze" to load</p>
-        </div>
-      </div>
-    </div>
-
-  </div><!-- /row -->
-
-  <!-- ── Trading levels row ── -->
-  <div id="sig2LevelsCard" class="sig2-card mb-4" style="display:none">
-    <div class="sig2-section-title mb-3">🎯 Trading Levels (ATR-based)</div>
-    <div class="row g-3">
-      <div class="col-6 col-md-3">
-        <div class="sig2-level-card sig2-level-stop">
-          <div class="sig2-label">Stop Loss</div>
-          <div id="lvStopLoss" class="sig2-level-val">--</div>
-          <div id="lvRiskPct" class="sig2-sublabel">-- risk</div>
-        </div>
-      </div>
-      <div class="col-6 col-md-3">
-        <div class="sig2-level-card">
-          <div class="sig2-label">Current Price</div>
-          <div id="lvCurrPrice" class="sig2-level-val" style="color:#f6e05e">--</div>
-        </div>
-      </div>
-      <div class="col-6 col-md-3">
-        <div class="sig2-level-card sig2-level-tp">
-          <div class="sig2-label">Take Profit 1</div>
-          <div id="lvTP1" class="sig2-level-val">--</div>
-          <div id="lvRR1" class="sig2-sublabel">R:R --</div>
-        </div>
-      </div>
-      <div class="col-6 col-md-3">
-        <div class="sig2-level-card sig2-level-tp">
-          <div class="sig2-label">Take Profit 2</div>
-          <div id="lvTP2" class="sig2-level-val">--</div>
-          <div id="lvRR2" class="sig2-sublabel">R:R --</div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- ── Gainers analysis (existing, kept) ── -->
-  <div class="sig2-card">
-    <div class="sig2-section-title mb-3">📈 Top Gainers Analysis</div>
-    <div class="row g-2 mb-3">
-      <div class="col-md-3">
-        <select id="gainerTimeframe" class="form-select sig2-input">
-          <option value="4h" selected>4h Timeframe</option>
-          <option value="1h">1h Timeframe</option>
-          <option value="1d">1d Timeframe</option>
-        </select>
-      </div>
-      <div class="col-md-2">
-        <input type="number" id="gainerLimit" class="form-control sig2-input" value="20" min="5" max="50">
-      </div>
-      <div class="col-md-4">
-        <button class="btn sig2-btn-primary w-100" onclick="enhancedLoadGainerSignals()" id="gainerSignalsBtn">
-          <span class="spinner-border spinner-border-sm d-none me-1" id="gainerSpinner"></span>
-          Analyze Top Gainers
-        </button>
-      </div>
-    </div>
-    <div id="enhancedGainerSignalsAlert"></div>
-    <div class="table-responsive mt-2">
-      <table class="table table-sm mb-0 sig2-table">
-        <thead>
-          <tr>
-            <th>#</th><th>Symbol</th><th>Price</th><th>24h %</th>
-            <th>Volume</th><th>RSI</th><th>MACD</th><th>Trend</th>
-            <th>Signal</th><th>Action</th>
-          </tr>
-        </thead>
-        <tbody id="enhancedGainerSignalsBody">
-          <tr><td colspan="10" class="text-center sig2-empty-msg py-3">Run analysis to see gainer signals</td></tr>
-        </tbody>
-      </table>
-    </div>
-  </div>
-
-</div><!-- /tab-pane signals -->
-
+        <!-- End -->
 
         <!-- GAINERS -->
         <div class="tab-pane fade" id="gainers">
@@ -4341,831 +4245,6 @@ document.addEventListener("DOMContentLoaded", function() {
         updateTradingViewChart("BTC/USDT");
     }, 2000);
 });
-
-
-
-// ──────────────────────────────────────────────────────────────
-// SIGNALS v2 — helper utilities
-// ──────────────────────────────────────────────────────────────
-
-function sig2ShowAlert(msg, type="danger") {
-  document.getElementById("sig2Alert").innerHTML =
-    `<div class="alert alert-${type} alert-dismissible fade show" role="alert">
-       ${msg}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-     </div>`;
-}
-
-function sig2SetSpinner(on) {
-  document.getElementById("sig2Spinner").classList.toggle("d-none", !on);
-  document.getElementById("sig2RunBtn").disabled = on;
-}
-
-function sig2BadgeClass(signal) {
-  const s = (signal||"").toUpperCase();
-  if (s.includes("STRONG BUY") || s.includes("BREAKOUT_ABOVE")) return "sig2-badge-buy";
-  if (s.includes("BUY") || s.includes("BULLISH") || s.includes("LONG")) return "sig2-badge-buy";
-  if (s.includes("STRONG SELL") || s.includes("BREAKDOWN_BELOW")) return "sig2-badge-sell";
-  if (s.includes("SELL") || s.includes("BEARISH") || s.includes("SHORT")) return "sig2-badge-sell";
-  if (s.includes("WARN") || s.includes("SWEEP") || s.includes("NEUTRAL")) return "sig2-badge-warn";
-  return "sig2-badge-neutral";
-}
-
-function sig2PanelBadgeStyle(signal) {
-  const s = (signal||"").toUpperCase();
-  if (s.includes("BUY")||s.includes("BULL")||s.includes("LONG")||s.includes("ABOVE_VA"))
-    return "background:rgba(16,185,129,.2);color:#10b981;border:1px solid #10b981";
-  if (s.includes("SELL")||s.includes("BEAR")||s.includes("SHORT")||s.includes("BELOW_VA"))
-    return "background:rgba(239,68,68,.2);color:#ef4444;border:1px solid #ef4444";
-  if (s.includes("WARN")||s.includes("SWEEP")||s.includes("POC"))
-    return "background:rgba(245,158,11,.15);color:#f59e0b;border:1px solid #f59e0b";
-  return "";
-}
-
-function sig2FormatPrice(n) {
-  if (!n) return "--";
-  const v = parseFloat(n);
-  if (v > 1000) return v.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2});
-  if (v > 1)    return v.toFixed(4);
-  return v.toFixed(6);
-}
-
-// ──────────────────────────────────────────────────────────────
-// MAIN ENHANCED SIGNAL (all-in-one)
-// ──────────────────────────────────────────────────────────────
-async function runEnhancedSignalV2() {
-  const symbol    = (document.getElementById("sig2Symbol").value||"BTC/USDT").trim().toUpperCase();
-  const timeframe = document.getElementById("sig2Timeframe").value;
-  const limit     = parseInt(document.getElementById("sig2Limit").value);
-
-  sig2SetSpinner(true);
-  document.getElementById("sig2Alert").innerHTML = "";
-
-  try {
-    const res  = await fetch(API + "/enhanced_signal_v2", {
-      method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({ symbol, timeframe, limit })
-    });
-    const data = await res.json();
-    if (!data.success) throw new Error(data.error||"Signal failed");
-
-    renderMainSignal(data);
-    renderLevels(data.trading_levels, data.current_price);
-
-    // Also fire individual panels in background
-    renderVolumeProfilePanel(data.volume_profile, data.current_price);
-    renderOBFlowPanel(data.order_book_flow);
-    renderSweepPanel(data.liquidity_sweep);
-
-  } catch(e) {
-    sig2ShowAlert("Error: " + e.message);
-  } finally {
-    sig2SetSpinner(false);
-  }
-}
-
-function renderMainSignal(data) {
-  // Show card
-  document.getElementById("sig2MainCard").style.display = "block";
-
-  // Badge col colour
-  const badgeClass = sig2BadgeClass(data.signal);
-  const badge = document.getElementById("sig2SignalBadge");
-  badge.textContent = data.signal;
-  badge.className = "sig2-signal-badge mb-2 " + badgeClass;
-
-  const col = document.getElementById("sig2BadgeCol");
-  if (badgeClass.includes("buy"))     col.style.background="rgba(16,185,129,.06)";
-  else if (badgeClass.includes("sell")) col.style.background="rgba(239,68,68,.06)";
-  else                                  col.style.background="rgba(148,163,184,.04)";
-
-  // Score
-  const score = data.score || 50;
-  document.getElementById("sig2ScoreNum").textContent = score;
-  document.getElementById("sig2ScoreFill").style.width = score + "%";
-
-  document.getElementById("sig2Rec").textContent = data.recommendation || "--";
-  document.getElementById("sig2Price").textContent = sig2FormatPrice(data.current_price);
-
-  // RSI
-  const rsi = data.indicators?.rsi;
-  document.getElementById("sig2RSI").textContent = rsi ? rsi.toFixed(1) : "--";
-  document.getElementById("sig2RSI").style.color = rsi<30?"#10b981":rsi>70?"#ef4444":"#e2e8f0";
-  document.getElementById("sig2RSILabel").textContent = rsi<30?"Oversold":rsi>70?"Overbought":rsi>55?"Bullish":"Bearish";
-
-  // MACD
-  const mh = data.indicators?.macd_hist;
-  document.getElementById("sig2MACD").textContent = mh!=null?(mh>0?"+":"")+mh.toFixed(5):"--";
-  document.getElementById("sig2MACD").style.color  = mh>0?"#10b981":mh<0?"#ef4444":"#e2e8f0";
-  document.getElementById("sig2MACDLabel").textContent = data.indicators?.macd_cross||"--";
-
-  // ADX
-  const adx = data.indicators?.adx;
-  document.getElementById("sig2ADX").textContent = adx ? adx.toFixed(1) : "--";
-  document.getElementById("sig2ADXLabel").textContent =
-    adx>40?"Very Strong":adx>25?"Strong Trend":adx>15?"Weak Trend":"Ranging";
-
-  // EMAs
-  const ind = data.indicators || {};
-  const p   = data.current_price;
-  document.getElementById("sig2EMA20").querySelector("span:last-child").textContent =
-    ind.ema20 ? sig2FormatPrice(ind.ema20) : "--";
-  document.getElementById("sig2EMA20").style.color = p>ind.ema20 ? "#10b981":"#ef4444";
-  document.getElementById("sig2EMA50").querySelector("span:last-child").textContent =
-    ind.ema50 ? sig2FormatPrice(ind.ema50) : "--";
-  document.getElementById("sig2EMA50").style.color = p>ind.ema50 ? "#10b981":"#ef4444";
-  document.getElementById("sig2EMA200").querySelector("span:last-child").textContent =
-    ind.ema200 ? sig2FormatPrice(ind.ema200) : "--";
-  document.getElementById("sig2EMA200").style.color = p>ind.ema200 ? "#10b981":"#ef4444";
-  document.getElementById("sig2ATR").querySelector("span:last-child").textContent =
-    ind.atr_pct ? ind.atr_pct.toFixed(2)+"%" : "--";
-  document.getElementById("sig2VolRatio").querySelector("span:last-child").textContent =
-    ind.volume_ratio ? ind.volume_ratio.toFixed(2)+"x" : "--";
-
-  // Reasons
-  const ul = document.getElementById("sig2ReasonsList");
-  ul.innerHTML = (data.reasons||[]).map(r => `<li>${r}</li>`).join("");
-}
-
-function renderLevels(lvl, price) {
-  if (!lvl) return;
-  document.getElementById("sig2LevelsCard").style.display = "block";
-  document.getElementById("lvCurrPrice").textContent = sig2FormatPrice(price);
-  document.getElementById("lvStopLoss").textContent  = sig2FormatPrice(lvl.stop_loss);
-  document.getElementById("lvRiskPct").textContent   = (lvl.risk_pct||0).toFixed(2) + "% risk";
-  document.getElementById("lvTP1").textContent       = sig2FormatPrice(lvl.take_profit_1);
-  document.getElementById("lvRR1").textContent       = "R:R " + (lvl.rr_ratio||1).toFixed(2);
-  document.getElementById("lvTP2").textContent       = sig2FormatPrice(lvl.take_profit_2);
-  document.getElementById("lvRR2").textContent       = "R:R " + ((lvl.rr_ratio||1)*2).toFixed(2);
-}
-
-// ──────────────────────────────────────────────────────────────
-// VOLUME PROFILE standalone
-// ──────────────────────────────────────────────────────────────
-async function runVolumeProfile() {
-  const symbol    = (document.getElementById("sig2Symbol").value||"BTC/USDT").trim().toUpperCase();
-  const timeframe = document.getElementById("sig2Timeframe").value;
-
-  document.getElementById("vpBody").innerHTML =
-    `<p class="sig2-empty-msg">Loading…</p>`;
-
-  try {
-    const res  = await fetch(API + "/volume_profile", {
-      method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({ symbol, timeframe, limit:200, num_bins:40 })
-    });
-    const data = await res.json();
-    if (!data.success) throw new Error(data.error);
-    renderVolumeProfilePanel(data, data.current_price);
-  } catch(e) {
-    document.getElementById("vpBody").innerHTML =
-      `<p class="sig2-empty-msg text-danger">Error: ${e.message}</p>`;
-  }
-}
-
-function renderVolumeProfilePanel(vp, currPrice) {
-  if (!vp) return;
-  const badge = document.getElementById("vpSignalBadge");
-  badge.textContent = vp.signal || "—";
-  badge.style.cssText = sig2PanelBadgeStyle(vp.signal||"");
-
-  const poc = vp.poc || 0;
-  const vah = vp.vah || 0;
-  const val = vp.val || 0;
-  const cp  = currPrice || 0;
-
-  // Mini visual bar
-  let barHTML = "";
-  if (vp.profile && vp.profile.length) {
-    const maxV = Math.max(...vp.profile.map(b=>b.volume));
-    barHTML = `<div class="sig2-vp-bar-wrap">` +
-      vp.profile.map(b => {
-        const w = Math.max(1, Math.round((b.volume/maxV)*100));
-        const isPOC = Math.abs(b.price-poc)/poc < 0.005;
-        const isVA  = b.price>=val && b.price<=vah;
-        return `<div class="sig2-vp-bar ${isPOC?'poc':isVA?'va':''}" style="height:${w}%;width:${Math.max(2,100/vp.profile.length)}%" title="${b.price}: ${b.volume.toFixed(2)}"></div>`;
-      }).join("") + `</div>`;
-  }
-
-  document.getElementById("vpBody").innerHTML = barHTML + `
-    <div class="sig2-row">
-      <span class="sig2-row-key">POC</span>
-      <span class="sig2-row-val warn">${sig2FormatPrice(poc)}</span>
-    </div>
-    <div class="sig2-row">
-      <span class="sig2-row-key">VAH</span>
-      <span class="sig2-row-val bull">${sig2FormatPrice(vah)}</span>
-    </div>
-    <div class="sig2-row">
-      <span class="sig2-row-key">VAL</span>
-      <span class="sig2-row-val bear">${sig2FormatPrice(val)}</span>
-    </div>
-    <div class="sig2-row">
-      <span class="sig2-row-key">Current vs POC</span>
-      <span class="sig2-row-val ${cp>poc?'bull':'bear'}">${cp>poc?"Above":"Below"}</span>
-    </div>
-    <div class="sig2-row">
-      <span class="sig2-row-key">Value Area</span>
-      <span class="sig2-row-val">${vp.value_area_pct ? (vp.value_area_pct*100).toFixed(0)+"%" : "70%"}</span>
-    </div>
-    ${(vp.hvn||[]).slice(0,3).map(h=>
-      `<div class="sig2-row">
-        <span class="sig2-row-key">HVN</span>
-        <span class="sig2-row-val warn">${sig2FormatPrice(h.price)}</span>
-      </div>`).join("")}
-    ${(vp.lvn||[]).slice(0,2).map(l=>
-      `<div class="sig2-row">
-        <span class="sig2-row-key">LVN</span>
-        <span class="sig2-row-val" style="color:#94a3b8">${sig2FormatPrice(l.price)}</span>
-      </div>`).join("")}
-  `;
-}
-
-// ──────────────────────────────────────────────────────────────
-// ORDER BOOK FLOW standalone
-// ──────────────────────────────────────────────────────────────
-async function runOrderBookFlow() {
-  document.getElementById("obfBody").innerHTML = `<p class="sig2-empty-msg">Loading…</p>`;
-  try {
-    const res  = await fetch(API + "/order_book_flow", {
-      method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({ time_window:120, depth_levels:20, wall_multiplier:3 })
-    });
-    const data = await res.json();
-    if (!data.success) throw new Error(data.error);
-    renderOBFlowPanel(data);
-  } catch(e) {
-    document.getElementById("obfBody").innerHTML =
-      `<p class="sig2-empty-msg text-danger">Error: ${e.message}</p>`;
-  }
-}
-
-function renderOBFlowPanel(obf) {
-  if (!obf) return;
-  const badge = document.getElementById("obfSignalBadge");
-  badge.textContent = obf.flow_signal || obf.signal || "—";
-  badge.style.cssText = sig2PanelBadgeStyle(obf.flow_signal||obf.signal||"");
-
-  const buyV  = obf.buy_volume  || 0;
-  const sellV = obf.sell_volume || 0;
-  const total = buyV + sellV + 1e-9;
-  const buyPct  = (buyV/total*100).toFixed(1);
-  const sellPct = (100-buyPct).toFixed(1);
-  const delta   = obf.cumulative_delta || 0;
-
-  document.getElementById("obfBody").innerHTML = `
-    <div class="sig2-row">
-      <span class="sig2-row-key">Cum. Delta</span>
-      <span class="sig2-row-val ${delta>0?'bull':'bear'}">${delta>0?"+":""}${delta.toFixed(2)}</span>
-    </div>
-    <div class="sig2-row">
-      <span class="sig2-row-key">Buy Vol</span>
-      <span class="sig2-row-val bull">${buyV.toFixed(2)}</span>
-    </div>
-    <div class="sig2-row">
-      <span class="sig2-row-key">Sell Vol</span>
-      <span class="sig2-row-val bear">${sellV.toFixed(2)}</span>
-    </div>
-    <div class="sig2-mini-bar mt-1 mb-2">
-      <div class="sig2-mini-bar-buy"  style="width:${buyPct}%"></div>
-      <div class="sig2-mini-bar-sell" style="width:${sellPct}%"></div>
-    </div>
-    <div class="sig2-row">
-      <span class="sig2-row-key">Flow Ratio</span>
-      <span class="sig2-row-val">${(obf.flow_ratio*100||0).toFixed(1)}% buy</span>
-    </div>
-    <div class="sig2-row">
-      <span class="sig2-row-key">Bid Walls</span>
-      <span class="sig2-row-val ${obf.bid_walls?'bull':'sig2-row-val'}">${obf.bid_walls?"✔ Present":"None"}</span>
-    </div>
-    <div class="sig2-row">
-      <span class="sig2-row-key">Ask Walls</span>
-      <span class="sig2-row-val ${obf.ask_walls?'bear':'sig2-row-val'}">${obf.ask_walls?"✔ Present":"None"}</span>
-    </div>
-    ${(obf.absorptions||[]).slice(0,2).map(a=>
-      `<div class="sig2-row">
-        <span class="sig2-row-key">${a.type||"Absorption"}</span>
-        <span class="sig2-row-val ${a.signal==='BULLISH'?'bull':'bear'}">${sig2FormatPrice(a.price)} ${a.signal}</span>
-      </div>`
-    ).join("")}
-    ${(obf.bid_walls||[]).slice(0,2).map(w=>
-      `<div class="sig2-row">
-        <span class="sig2-row-key">Bid Wall</span>
-        <span class="sig2-row-val warn">${sig2FormatPrice(w.price)} (${w.strength}x)</span>
-      </div>`
-    ).join("")}
-    ${(obf.ask_walls||[]).slice(0,2).map(w=>
-      `<div class="sig2-row">
-        <span class="sig2-row-key">Ask Wall</span>
-        <span class="sig2-row-val warn">${sig2FormatPrice(w.price)} (${w.strength}x)</span>
-      </div>`
-    ).join("")}
-  `;
-}
-
-// ──────────────────────────────────────────────────────────────
-// LIQUIDITY SWEEP standalone
-// ──────────────────────────────────────────────────────────────
-async function runLiquiditySweep() {
-  const symbol    = (document.getElementById("sig2Symbol").value||"BTC/USDT").trim().toUpperCase();
-  const timeframe = document.getElementById("sig2Timeframe").value;
-  document.getElementById("lsBody").innerHTML = `<p class="sig2-empty-msg">Loading…</p>`;
-
-  try {
-    const res  = await fetch(API + "/liquidity_sweep", {
-      method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({ symbol, timeframe, limit:150, wick_pct:0.3, eq_tolerance:0.002 })
-    });
-    const data = await res.json();
-    if (!data.success) throw new Error(data.error);
-    renderSweepPanel(data);
-  } catch(e) {
-    document.getElementById("lsBody").innerHTML =
-      `<p class="sig2-empty-msg text-danger">Error: ${e.message}</p>`;
-  }
-}
-
-function renderSweepPanel(ls) {
-  if (!ls) return;
-  const badge = document.getElementById("lsSignalBadge");
-  const srisk = ls.sweep_risk || ls.signal || "NONE";
-  badge.textContent = srisk;
-  badge.style.cssText = sig2PanelBadgeStyle(srisk);
-
-  const sweeps = (ls.sweeps||[]).slice(0,4);
-  const sweepHTML = sweeps.length ? sweeps.map(s=>{
-    const isBull = s.type==="BULLISH_SWEEP";
-    return `<div class="sig2-sweep ${isBull?'sig2-sweep-bull':'sig2-sweep-bear'}">
-      <div class="sig2-sweep-icon">${isBull?"🟢":"🔴"}</div>
-      <div class="sig2-sweep-info">
-        <div class="sig2-sweep-type" style="color:${isBull?'#10b981':'#ef4444'}">${s.type}</div>
-        <div class="sig2-sweep-price">Sweep @ ${sig2FormatPrice(s.sweep_price)} → Close ${sig2FormatPrice(s.close_price)}</div>
-        <div class="sig2-sweep-desc">${s.description||""}</div>
-      </div>
-    </div>`;
-  }).join("") : `<p class="sig2-empty-msg">No recent sweeps detected</p>`;
-
-  document.getElementById("lsBody").innerHTML = `
-    <div class="sig2-row">
-      <span class="sig2-row-key">Sweep Risk</span>
-      <span class="sig2-row-val warn">${ls.sweep_risk||"NONE"}</span>
-    </div>
-    <div class="sig2-row">
-      <span class="sig2-row-key">Near Inducement</span>
-      <span class="sig2-row-val ${ls.near_inducement?'warn':'sig2-row-val'}">${ls.near_inducement?"⚠ YES":"No"}</span>
-    </div>
-    <div class="sig2-row">
-      <span class="sig2-row-key">Bullish Sweeps</span>
-      <span class="sig2-row-val bull">${ls.bullish_sweeps||0}</span>
-    </div>
-    <div class="sig2-row">
-      <span class="sig2-row-key">Bearish Sweeps</span>
-      <span class="sig2-row-val bear">${ls.bearish_sweeps||0}</span>
-    </div>
-    ${(ls.inducement_highs||[]).slice(0,2).map(h=>
-      `<div class="sig2-row">
-        <span class="sig2-row-key">Ind. High</span>
-        <span class="sig2-row-val bear">${sig2FormatPrice(h)}</span>
-      </div>`).join("")}
-    ${(ls.inducement_lows||[]).slice(0,2).map(l=>
-      `<div class="sig2-row">
-        <span class="sig2-row-key">Ind. Low</span>
-        <span class="sig2-row-val bull">${sig2FormatPrice(l)}</span>
-      </div>`).join("")}
-    <div class="mt-2"><div class="sig2-label mb-1">Recent Sweeps</div>${sweepHTML}</div>
-  `;
-}
-
-// ──────────────────────────────────────────────────────────────
-// Auto-refresh signals when tab is shown
-// ──────────────────────────────────────────────────────────────
-document.querySelector('#mainTabs a[href="#signals"]')?.addEventListener('shown.bs.tab', () => {
-  // small delay so DOM is ready
-  setTimeout(runEnhancedSignalV2, 300);
-});
-
-
-// new 
-// SIGNALS v2 — helper utilities
-// ──────────────────────────────────────────────────────────────
-
-function sig2ShowAlert(msg, type="danger") {
-  document.getElementById("sig2Alert").innerHTML =
-    `<div class="alert alert-${type} alert-dismissible fade show" role="alert">
-       ${msg}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-     </div>`;
-}
-
-function sig2SetSpinner(on) {
-  document.getElementById("sig2Spinner").classList.toggle("d-none", !on);
-  document.getElementById("sig2RunBtn").disabled = on;
-}
-
-function sig2BadgeClass(signal) {
-  const s = (signal||"").toUpperCase();
-  if (s.includes("STRONG BUY") || s.includes("BREAKOUT_ABOVE")) return "sig2-badge-buy";
-  if (s.includes("BUY") || s.includes("BULLISH") || s.includes("LONG")) return "sig2-badge-buy";
-  if (s.includes("STRONG SELL") || s.includes("BREAKDOWN_BELOW")) return "sig2-badge-sell";
-  if (s.includes("SELL") || s.includes("BEARISH") || s.includes("SHORT")) return "sig2-badge-sell";
-  if (s.includes("WARN") || s.includes("SWEEP") || s.includes("NEUTRAL")) return "sig2-badge-warn";
-  return "sig2-badge-neutral";
-}
-
-function sig2PanelBadgeStyle(signal) {
-  const s = (signal||"").toUpperCase();
-  if (s.includes("BUY")||s.includes("BULL")||s.includes("LONG")||s.includes("ABOVE_VA"))
-    return "background:rgba(16,185,129,.2);color:#10b981;border:1px solid #10b981";
-  if (s.includes("SELL")||s.includes("BEAR")||s.includes("SHORT")||s.includes("BELOW_VA"))
-    return "background:rgba(239,68,68,.2);color:#ef4444;border:1px solid #ef4444";
-  if (s.includes("WARN")||s.includes("SWEEP")||s.includes("POC"))
-    return "background:rgba(245,158,11,.15);color:#f59e0b;border:1px solid #f59e0b";
-  return "";
-}
-
-function sig2FormatPrice(n) {
-  if (!n) return "--";
-  const v = parseFloat(n);
-  if (v > 1000) return v.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2});
-  if (v > 1)    return v.toFixed(4);
-  return v.toFixed(6);
-}
-
-// ──────────────────────────────────────────────────────────────
-// MAIN ENHANCED SIGNAL (all-in-one)
-// ──────────────────────────────────────────────────────────────
-async function runEnhancedSignalV2() {
-  const symbol    = (document.getElementById("sig2Symbol").value||"BTC/USDT").trim().toUpperCase();
-  const timeframe = document.getElementById("sig2Timeframe").value;
-  const limit     = parseInt(document.getElementById("sig2Limit").value);
-
-  sig2SetSpinner(true);
-  document.getElementById("sig2Alert").innerHTML = "";
-
-  try {
-    const res  = await fetch(API + "/enhanced_signal_v2", {
-      method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({ symbol, timeframe, limit })
-    });
-    const data = await res.json();
-    if (!data.success) throw new Error(data.error||"Signal failed");
-
-    renderMainSignal(data);
-    renderLevels(data.trading_levels, data.current_price);
-
-    // Also fire individual panels in background
-    renderVolumeProfilePanel(data.volume_profile, data.current_price);
-    renderOBFlowPanel(data.order_book_flow);
-    renderSweepPanel(data.liquidity_sweep);
-
-  } catch(e) {
-    sig2ShowAlert("Error: " + e.message);
-  } finally {
-    sig2SetSpinner(false);
-  }
-}
-
-function renderMainSignal(data) {
-  // Show card
-  document.getElementById("sig2MainCard").style.display = "block";
-
-  // Badge col colour
-  const badgeClass = sig2BadgeClass(data.signal);
-  const badge = document.getElementById("sig2SignalBadge");
-  badge.textContent = data.signal;
-  badge.className = "sig2-signal-badge mb-2 " + badgeClass;
-
-  const col = document.getElementById("sig2BadgeCol");
-  if (badgeClass.includes("buy"))     col.style.background="rgba(16,185,129,.06)";
-  else if (badgeClass.includes("sell")) col.style.background="rgba(239,68,68,.06)";
-  else                                  col.style.background="rgba(148,163,184,.04)";
-
-  // Score
-  const score = data.score || 50;
-  document.getElementById("sig2ScoreNum").textContent = score;
-  document.getElementById("sig2ScoreFill").style.width = score + "%";
-
-  document.getElementById("sig2Rec").textContent = data.recommendation || "--";
-  document.getElementById("sig2Price").textContent = sig2FormatPrice(data.current_price);
-
-  // RSI
-  const rsi = data.indicators?.rsi;
-  document.getElementById("sig2RSI").textContent = rsi ? rsi.toFixed(1) : "--";
-  document.getElementById("sig2RSI").style.color = rsi<30?"#10b981":rsi>70?"#ef4444":"#e2e8f0";
-  document.getElementById("sig2RSILabel").textContent = rsi<30?"Oversold":rsi>70?"Overbought":rsi>55?"Bullish":"Bearish";
-
-  // MACD
-  const mh = data.indicators?.macd_hist;
-  document.getElementById("sig2MACD").textContent = mh!=null?(mh>0?"+":"")+mh.toFixed(5):"--";
-  document.getElementById("sig2MACD").style.color  = mh>0?"#10b981":mh<0?"#ef4444":"#e2e8f0";
-  document.getElementById("sig2MACDLabel").textContent = data.indicators?.macd_cross||"--";
-
-  // ADX
-  const adx = data.indicators?.adx;
-  document.getElementById("sig2ADX").textContent = adx ? adx.toFixed(1) : "--";
-  document.getElementById("sig2ADXLabel").textContent =
-    adx>40?"Very Strong":adx>25?"Strong Trend":adx>15?"Weak Trend":"Ranging";
-
-  // EMAs
-  const ind = data.indicators || {};
-  const p   = data.current_price;
-  document.getElementById("sig2EMA20").querySelector("span:last-child").textContent =
-    ind.ema20 ? sig2FormatPrice(ind.ema20) : "--";
-  document.getElementById("sig2EMA20").style.color = p>ind.ema20 ? "#10b981":"#ef4444";
-  document.getElementById("sig2EMA50").querySelector("span:last-child").textContent =
-    ind.ema50 ? sig2FormatPrice(ind.ema50) : "--";
-  document.getElementById("sig2EMA50").style.color = p>ind.ema50 ? "#10b981":"#ef4444";
-  document.getElementById("sig2EMA200").querySelector("span:last-child").textContent =
-    ind.ema200 ? sig2FormatPrice(ind.ema200) : "--";
-  document.getElementById("sig2EMA200").style.color = p>ind.ema200 ? "#10b981":"#ef4444";
-  document.getElementById("sig2ATR").querySelector("span:last-child").textContent =
-    ind.atr_pct ? ind.atr_pct.toFixed(2)+"%" : "--";
-  document.getElementById("sig2VolRatio").querySelector("span:last-child").textContent =
-    ind.volume_ratio ? ind.volume_ratio.toFixed(2)+"x" : "--";
-
-  // Reasons
-  const ul = document.getElementById("sig2ReasonsList");
-  ul.innerHTML = (data.reasons||[]).map(r => `<li>${r}</li>`).join("");
-}
-
-function renderLevels(lvl, price) {
-  if (!lvl) return;
-  document.getElementById("sig2LevelsCard").style.display = "block";
-  document.getElementById("lvCurrPrice").textContent = sig2FormatPrice(price);
-  document.getElementById("lvStopLoss").textContent  = sig2FormatPrice(lvl.stop_loss);
-  document.getElementById("lvRiskPct").textContent   = (lvl.risk_pct||0).toFixed(2) + "% risk";
-  document.getElementById("lvTP1").textContent       = sig2FormatPrice(lvl.take_profit_1);
-  document.getElementById("lvRR1").textContent       = "R:R " + (lvl.rr_ratio||1).toFixed(2);
-  document.getElementById("lvTP2").textContent       = sig2FormatPrice(lvl.take_profit_2);
-  document.getElementById("lvRR2").textContent       = "R:R " + ((lvl.rr_ratio||1)*2).toFixed(2);
-}
-
-// ──────────────────────────────────────────────────────────────
-// VOLUME PROFILE standalone
-// ──────────────────────────────────────────────────────────────
-async function runVolumeProfile() {
-  const symbol    = (document.getElementById("sig2Symbol").value||"BTC/USDT").trim().toUpperCase();
-  const timeframe = document.getElementById("sig2Timeframe").value;
-
-  document.getElementById("vpBody").innerHTML =
-    `<p class="sig2-empty-msg">Loading…</p>`;
-
-  try {
-    const res  = await fetch(API + "/volume_profile", {
-      method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({ symbol, timeframe, limit:200, num_bins:40 })
-    });
-    const data = await res.json();
-    if (!data.success) throw new Error(data.error);
-    renderVolumeProfilePanel(data, data.current_price);
-  } catch(e) {
-    document.getElementById("vpBody").innerHTML =
-      `<p class="sig2-empty-msg text-danger">Error: ${e.message}</p>`;
-  }
-}
-
-function renderVolumeProfilePanel(vp, currPrice) {
-  if (!vp) return;
-  const badge = document.getElementById("vpSignalBadge");
-  badge.textContent = vp.signal || "—";
-  badge.style.cssText = sig2PanelBadgeStyle(vp.signal||"");
-
-  const poc = vp.poc || 0;
-  const vah = vp.vah || 0;
-  const val = vp.val || 0;
-  const cp  = currPrice || 0;
-
-  // Mini visual bar
-  let barHTML = "";
-  if (vp.profile && vp.profile.length) {
-    const maxV = Math.max(...vp.profile.map(b=>b.volume));
-    barHTML = `<div class="sig2-vp-bar-wrap">` +
-      vp.profile.map(b => {
-        const w = Math.max(1, Math.round((b.volume/maxV)*100));
-        const isPOC = Math.abs(b.price-poc)/poc < 0.005;
-        const isVA  = b.price>=val && b.price<=vah;
-        return `<div class="sig2-vp-bar ${isPOC?'poc':isVA?'va':''}" style="height:${w}%;width:${Math.max(2,100/vp.profile.length)}%" title="${b.price}: ${b.volume.toFixed(2)}"></div>`;
-      }).join("") + `</div>`;
-  }
-
-  document.getElementById("vpBody").innerHTML = barHTML + `
-    <div class="sig2-row">
-      <span class="sig2-row-key">POC</span>
-      <span class="sig2-row-val warn">${sig2FormatPrice(poc)}</span>
-    </div>
-    <div class="sig2-row">
-      <span class="sig2-row-key">VAH</span>
-      <span class="sig2-row-val bull">${sig2FormatPrice(vah)}</span>
-    </div>
-    <div class="sig2-row">
-      <span class="sig2-row-key">VAL</span>
-      <span class="sig2-row-val bear">${sig2FormatPrice(val)}</span>
-    </div>
-    <div class="sig2-row">
-      <span class="sig2-row-key">Current vs POC</span>
-      <span class="sig2-row-val ${cp>poc?'bull':'bear'}">${cp>poc?"Above":"Below"}</span>
-    </div>
-    <div class="sig2-row">
-      <span class="sig2-row-key">Value Area</span>
-      <span class="sig2-row-val">${vp.value_area_pct ? (vp.value_area_pct*100).toFixed(0)+"%" : "70%"}</span>
-    </div>
-    ${(vp.hvn||[]).slice(0,3).map(h=>
-      `<div class="sig2-row">
-        <span class="sig2-row-key">HVN</span>
-        <span class="sig2-row-val warn">${sig2FormatPrice(h.price)}</span>
-      </div>`).join("")}
-    ${(vp.lvn||[]).slice(0,2).map(l=>
-      `<div class="sig2-row">
-        <span class="sig2-row-key">LVN</span>
-        <span class="sig2-row-val" style="color:#94a3b8">${sig2FormatPrice(l.price)}</span>
-      </div>`).join("")}
-  `;
-}
-
-// ──────────────────────────────────────────────────────────────
-// ORDER BOOK FLOW standalone
-// ──────────────────────────────────────────────────────────────
-async function runOrderBookFlow() {
-  document.getElementById("obfBody").innerHTML = `<p class="sig2-empty-msg">Loading…</p>`;
-  try {
-    const res  = await fetch(API + "/order_book_flow", {
-      method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({ time_window:120, depth_levels:20, wall_multiplier:3 })
-    });
-    const data = await res.json();
-    if (!data.success) throw new Error(data.error);
-    renderOBFlowPanel(data);
-  } catch(e) {
-    document.getElementById("obfBody").innerHTML =
-      `<p class="sig2-empty-msg text-danger">Error: ${e.message}</p>`;
-  }
-}
-
-function renderOBFlowPanel(obf) {
-  if (!obf) return;
-  const badge = document.getElementById("obfSignalBadge");
-  badge.textContent = obf.flow_signal || obf.signal || "—";
-  badge.style.cssText = sig2PanelBadgeStyle(obf.flow_signal||obf.signal||"");
-
-  const buyV  = obf.buy_volume  || 0;
-  const sellV = obf.sell_volume || 0;
-  const total = buyV + sellV + 1e-9;
-  const buyPct  = (buyV/total*100).toFixed(1);
-  const sellPct = (100-parseFloat(buyPct)).toFixed(1);
-  const delta   = obf.cumulative_delta || 0;
-
-  // bid_walls / ask_walls can be a boolean (from enhanced_signal_v2 summary)
-  // or an array (from the standalone /order_book_flow endpoint).
-  // Normalise both to safe arrays for rendering.
-  const bidWallBool = Array.isArray(obf.bid_walls) ? obf.bid_walls.length > 0 : !!obf.bid_walls;
-  const askWallBool = Array.isArray(obf.ask_walls) ? obf.ask_walls.length > 0 : !!obf.ask_walls;
-  const bidWallArr  = Array.isArray(obf.bid_walls) ? obf.bid_walls : [];
-  const askWallArr  = Array.isArray(obf.ask_walls) ? obf.ask_walls : [];
-  const absorpArr   = Array.isArray(obf.absorptions) ? obf.absorptions : [];
-
-  document.getElementById("obfBody").innerHTML = `
-    <div class="sig2-row">
-      <span class="sig2-row-key">Cum. Delta</span>
-      <span class="sig2-row-val ${delta>0?'bull':'bear'}">${delta>0?"+":""}${delta.toFixed(2)}</span>
-    </div>
-    <div class="sig2-row">
-      <span class="sig2-row-key">Buy Vol</span>
-      <span class="sig2-row-val bull">${buyV.toFixed(2)}</span>
-    </div>
-    <div class="sig2-row">
-      <span class="sig2-row-key">Sell Vol</span>
-      <span class="sig2-row-val bear">${sellV.toFixed(2)}</span>
-    </div>
-    <div class="sig2-mini-bar mt-1 mb-2">
-      <div class="sig2-mini-bar-buy"  style="width:${buyPct}%"></div>
-      <div class="sig2-mini-bar-sell" style="width:${sellPct}%"></div>
-    </div>
-    <div class="sig2-row">
-      <span class="sig2-row-key">Flow Ratio</span>
-      <span class="sig2-row-val">${((obf.flow_ratio||0)*100).toFixed(1)}% buy</span>
-    </div>
-    <div class="sig2-row">
-      <span class="sig2-row-key">Bid Walls</span>
-      <span class="sig2-row-val ${bidWallBool?'bull':''}">${bidWallBool?"✔ Present":"None"}</span>
-    </div>
-    <div class="sig2-row">
-      <span class="sig2-row-key">Ask Walls</span>
-      <span class="sig2-row-val ${askWallBool?'bear':''}">${askWallBool?"✔ Present":"None"}</span>
-    </div>
-    ${absorpArr.slice(0,2).map(a=>
-      `<div class="sig2-row">
-        <span class="sig2-row-key">${a.type||"Absorption"}</span>
-        <span class="sig2-row-val ${a.signal==='BULLISH'?'bull':'bear'}">${sig2FormatPrice(a.price)} ${a.signal}</span>
-      </div>`
-    ).join("")}
-    ${bidWallArr.slice(0,2).map(w=>
-      `<div class="sig2-row">
-        <span class="sig2-row-key">Bid Wall</span>
-        <span class="sig2-row-val warn">${sig2FormatPrice(w.price)} (${w.strength}x)</span>
-      </div>`
-    ).join("")}
-    ${askWallArr.slice(0,2).map(w=>
-      `<div class="sig2-row">
-        <span class="sig2-row-key">Ask Wall</span>
-        <span class="sig2-row-val warn">${sig2FormatPrice(w.price)} (${w.strength}x)</span>
-      </div>`
-    ).join("")}
-  `;
-}
-
-// ──────────────────────────────────────────────────────────────
-// LIQUIDITY SWEEP standalone
-// ──────────────────────────────────────────────────────────────
-async function runLiquiditySweep() {
-  const symbol    = (document.getElementById("sig2Symbol").value||"BTC/USDT").trim().toUpperCase();
-  const timeframe = document.getElementById("sig2Timeframe").value;
-  document.getElementById("lsBody").innerHTML = `<p class="sig2-empty-msg">Loading…</p>`;
-
-  try {
-    const res  = await fetch(API + "/liquidity_sweep", {
-      method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({ symbol, timeframe, limit:150, wick_pct:0.3, eq_tolerance:0.002 })
-    });
-    const data = await res.json();
-    if (!data.success) throw new Error(data.error);
-    renderSweepPanel(data);
-  } catch(e) {
-    document.getElementById("lsBody").innerHTML =
-      `<p class="sig2-empty-msg text-danger">Error: ${e.message}</p>`;
-  }
-}
-
-function renderSweepPanel(ls) {
-  if (!ls) return;
-  const badge = document.getElementById("lsSignalBadge");
-  const srisk = ls.sweep_risk || ls.signal || "NONE";
-  badge.textContent = srisk;
-  badge.style.cssText = sig2PanelBadgeStyle(srisk);
-
-  // sweeps / inducement arrays may be absent when called from enhanced_signal_v2
-  // (which returns a compact summary object, not the full /liquidity_sweep response)
-  const sweepsArr   = Array.isArray(ls.sweeps)            ? ls.sweeps            : [];
-  const indHighsArr = Array.isArray(ls.inducement_highs)  ? ls.inducement_highs  : [];
-  const indLowsArr  = Array.isArray(ls.inducement_lows)   ? ls.inducement_lows   : [];
-
-  const sweeps = sweepsArr.slice(0, 4);
-  const sweepHTML = sweeps.length ? sweeps.map(s => {
-    const isBull = s.type === "BULLISH_SWEEP";
-    return `<div class="sig2-sweep ${isBull?'sig2-sweep-bull':'sig2-sweep-bear'}">
-      <div class="sig2-sweep-icon">${isBull?"🟢":"🔴"}</div>
-      <div class="sig2-sweep-info">
-        <div class="sig2-sweep-type" style="color:${isBull?'#10b981':'#ef4444'}">${s.type}</div>
-        <div class="sig2-sweep-price">Sweep @ ${sig2FormatPrice(s.sweep_price)} → Close ${sig2FormatPrice(s.close_price)}</div>
-        <div class="sig2-sweep-desc">${s.description||""}</div>
-      </div>
-    </div>`;
-  }).join("") : `<p class="sig2-empty-msg">No recent sweeps detected</p>`;
-
-  // recent_sweep comes from the compact summary
-  const recentSweepRow = ls.recent_sweep && ls.recent_sweep !== "NONE"
-    ? `<div class="sig2-row">
-         <span class="sig2-row-key">Last Sweep</span>
-         <span class="sig2-row-val ${ls.recent_sweep.includes('BULL')?'bull':'bear'}">${ls.recent_sweep}</span>
-       </div>` : "";
-
-  document.getElementById("lsBody").innerHTML = `
-    <div class="sig2-row">
-      <span class="sig2-row-key">Sweep Risk</span>
-      <span class="sig2-row-val warn">${ls.sweep_risk||"NONE"}</span>
-    </div>
-    ${recentSweepRow}
-    <div class="sig2-row">
-      <span class="sig2-row-key">Near Inducement</span>
-      <span class="sig2-row-val ${ls.near_inducement?'warn':''}">${ls.near_inducement?"⚠ YES":"No"}</span>
-    </div>
-    <div class="sig2-row">
-      <span class="sig2-row-key">Bullish Sweeps</span>
-      <span class="sig2-row-val bull">${ls.bullish_sweeps||0}</span>
-    </div>
-    <div class="sig2-row">
-      <span class="sig2-row-key">Bearish Sweeps</span>
-      <span class="sig2-row-val bear">${ls.bearish_sweeps||0}</span>
-    </div>
-    ${indHighsArr.slice(0,2).map(h=>
-      `<div class="sig2-row">
-        <span class="sig2-row-key">Ind. High</span>
-        <span class="sig2-row-val bear">${sig2FormatPrice(h)}</span>
-      </div>`).join("")}
-    ${indLowsArr.slice(0,2).map(l=>
-      `<div class="sig2-row">
-        <span class="sig2-row-key">Ind. Low</span>
-        <span class="sig2-row-val bull">${sig2FormatPrice(l)}</span>
-      </div>`).join("")}
-    ${sweepsArr.length ? `<div class="mt-2"><div class="sig2-label mb-1">Recent Sweeps</div>${sweepHTML}</div>` : ""}
-  `;
-}
-
-// ──────────────────────────────────────────────────────────────
-// Auto-refresh signals when tab is shown
-// ──────────────────────────────────────────────────────────────
-document.querySelector('#mainTabs a[href="#signals"]')?.addEventListener('shown.bs.tab', () => {
-  // small delay so DOM is ready
-  setTimeout(runEnhancedSignalV2, 300);
-});
-// end
 
 </script>
 
