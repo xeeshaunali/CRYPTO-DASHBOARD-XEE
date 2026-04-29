@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Binance Futures Trading Journal</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <div class="header-content">
+                <h1 class="title">Binance Futures Trading Journal</h1>
+                <p class="subtitle">Track positions, calculate fees, and analyze performance</p>
+            </div>
+        </header>
+
+        <!-- Statistics Dashboard -->
+        <section class="stats-dashboard">
+            <div class="stats-tabs">
+                <button class="stats-tab active" onclick="loadStats('daily')">Today</button>
+                <button class="stats-tab" onclick="loadStats('weekly')">This Week</button>
+                <button class="stats-tab" onclick="loadStats('monthly')">This Month</button>
+                <button class="stats-tab" onclick="loadStats('alltime')">All Time</button>
+            </div>
+            <div id="statsContent" class="stats-content"></div>
+        </section>
+
+        <div class="main-grid">
+            <!-- Price Ticker Section -->
+            <section class="card price-card">
+                <h2 class="card-title">Live Price</h2>
+                <div class="input-group">
+                    <input type="text" id="priceSymbol" placeholder="BTCUSDT" class="input-field" value="BTCUSDT">
+                    <button onclick="fetchPrice()" class="btn btn-primary">Get Price</button>
+                </div>
+                <div id="priceResult" class="result-box"></div>
+            </section>
+
+            <!-- Funding Rate Section -->
+            <section class="card funding-card">
+                <h2 class="card-title">Funding Rate</h2>
+                <div class="input-group">
+                    <input type="text" id="fundingSymbol" placeholder="BTCUSDT" class="input-field" value="BTCUSDT">
+                    <button onclick="fetchFunding()" class="btn btn-primary">Get Funding</button>
+                </div>
+                <div id="fundingResult" class="result-box"></div>
+            </section>
+        </div>
+
+        <!-- Position Management -->
+        <section class="card position-manager">
+            <h2 class="card-title">Position Management</h2>
+            
+            <div class="tabs">
+                <button class="tab active" onclick="switchTab('open')">Open Position</button>
+                <button class="tab" onclick="switchTab('close')">Close Position</button>
+                <button class="tab" onclick="switchTab('calculator')">P&L Calculator</button>
+            </div>
+
+            <!-- Open Position Tab -->
+            <div id="openTab" class="tab-content active">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Symbol</label>
+                        <input type="text" id="openSymbol" placeholder="BTCUSDT" class="input-field">
+                    </div>
+                    <div class="form-group">
+                        <label>Entry Price</label>
+                        <input type="number" id="openEntryPrice" placeholder="50000" class="input-field" step="0.01">
+                    </div>
+                    <div class="form-group">
+                        <label>Position Size (USD)</label>
+                        <input type="number" id="openPositionSize" placeholder="1000" class="input-field" step="0.01">
+                    </div>
+                    <div class="form-group">
+                        <label>Leverage</label>
+                        <input type="number" id="openLeverage" placeholder="10" class="input-field" min="1" max="125">
+                    </div>
+                    <div class="form-group full-width">
+                        <label>Position Type</label>
+                        <div class="toggle-group">
+                            <button class="toggle-btn active" data-value="long" onclick="selectPosition(this, 'open')">Long</button>
+                            <button class="toggle-btn" data-value="short" onclick="selectPosition(this, 'open')">Short</button>
+                        </div>
+                    </div>
+                    <div class="form-group full-width">
+                        <label>Notes (Optional)</label>
+                        <textarea id="openNotes" placeholder="Trade notes..." class="input-field" rows="2"></textarea>
+                    </div>
+                </div>
+                <button onclick="openPosition()" class="btn btn-calculate">Open Position</button>
+                <div id="openResult" class="result-box"></div>
+            </div>
+
+            <!-- Close Position Tab -->
+            <div id="closeTab" class="tab-content">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Position ID</label>
+                        <select id="closePositionId" class="input-field">
+                            <option value="">Select open position...</option>
+                        </select>
+                        <button onclick="loadOpenPositions()" class="btn btn-sm" style="margin-top: 0.5rem;">Refresh List</button>
+                    </div>
+                    <div class="form-group">
+                        <label>Exit Price</label>
+                        <input type="number" id="closeExitPrice" placeholder="51000" class="input-field" step="0.01">
+                    </div>
+                    <div class="form-group full-width">
+                        <label>Funding Rate (Decimal)</label>
+                        <input type="number" id="closeFundingRate" placeholder="0.0001" class="input-field" step="0.00001">
+                        <small class="help-text">Leave 0 if unknown or no funding fees</small>
+                    </div>
+                </div>
+                <div id="positionDetails" class="highlight-box" style="display: none;"></div>
+                <button onclick="closePosition()" class="btn btn-calculate">Close Position</button>
+                <div id="closeResult" class="result-box"></div>
+            </div>
+
+            <!-- P&L Calculator Tab -->
+            <div id="calculatorTab" class="tab-content">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Entry Price</label>
+                        <input type="number" id="calcEntryPrice" placeholder="50000" class="input-field" step="0.01">
+                    </div>
+                    <div class="form-group">
+                        <label>Exit/Current Price</label>
+                        <input type="number" id="calcExitPrice" placeholder="51000" class="input-field" step="0.01">
+                    </div>
+                    <div class="form-group">
+                        <label>Position Size (USD)</label>
+                        <input type="number" id="calcPositionSize" placeholder="1000" class="input-field" step="0.01">
+                    </div>
+                    <div class="form-group">
+                        <label>Leverage</label>
+                        <input type="number" id="calcLeverage" placeholder="10" class="input-field" min="1" max="125">
+                    </div>
+                    <div class="form-group">
+                        <label>Holding Hours</label>
+                        <input type="number" id="calcHoldingHours" placeholder="24" class="input-field" step="0.1" value="0">
+                    </div>
+                    <div class="form-group">
+                        <label>Funding Rate (Decimal)</label>
+                        <input type="number" id="calcFundingRate" placeholder="0.0001" class="input-field" step="0.00001" value="0">
+                    </div>
+                    <div class="form-group full-width">
+                        <label>Position Type</label>
+                        <div class="toggle-group">
+                            <button class="toggle-btn active" data-value="long" onclick="selectPosition(this, 'calc')">Long</button>
+                            <button class="toggle-btn" data-value="short" onclick="selectPosition(this, 'calc')">Short</button>
+                        </div>
+                    </div>
+                    <div class="form-group full-width">
+                        <label>Fee Type</label>
+                        <div class="toggle-group">
+                            <button class="toggle-btn active" data-value="taker" onclick="selectFeeType(this)">Taker (0.04%)</button>
+                            <button class="toggle-btn" data-value="maker" onclick="selectFeeType(this)">Maker (0.02%)</button>
+                        </div>
+                    </div>
+                </div>
+                <button onclick="calculatePNL()" class="btn btn-calculate">Calculate P&L</button>
+                <div id="calcResult" class="result-box"></div>
+            </div>
+        </section>
+
+        <!-- Positions History -->
+        <section class="card history-card">
+            <h2 class="card-title">Position History</h2>
+            
+            <div class="tabs">
+                <button class="tab active" onclick="switchHistoryTab('open')">Open Positions</button>
+                <button class="tab" onclick="switchHistoryTab('closed')">Closed Positions</button>
+            </div>
+
+            <div id="openPositionsTab" class="tab-content active">
+                <button onclick="loadOpenPositions()" class="btn btn-primary" style="margin-bottom: 1rem;">Refresh</button>
+                <div id="openPositionsList"></div>
+            </div>
+
+            <div id="closedPositionsTab" class="tab-content">
+                <div class="filter-group">
+                    <button onclick="loadClosedPositions('all')" class="btn btn-sm">All</button>
+                    <button onclick="loadClosedPositions('today')" class="btn btn-sm">Today</button>
+                    <button onclick="loadClosedPositions('week')" class="btn btn-sm">This Week</button>
+                    <button onclick="loadClosedPositions('month')" class="btn btn-sm">This Month</button>
+                </div>
+                <div id="closedPositionsList"></div>
+            </div>
+        </section>
+    </div>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>

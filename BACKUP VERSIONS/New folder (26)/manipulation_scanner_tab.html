@@ -1,0 +1,825 @@
+<!-- ═══════════════════════════════════════════════════════════════
+     MANIPULATION SCANNER TAB
+     Add this <li> to your nav-tabs:
+       <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#manipulationScanner">🕵️ Manipulation Scan</a></li>
+     Then paste the entire block below inside <div class="tab-content">
+═══════════════════════════════════════════════════════════════ -->
+
+<div class="tab-pane fade" id="manipulationScanner">
+
+  <!-- ── Header ─────────────────────────────────────────────── -->
+  <div class="manip-hero mb-4">
+    <div class="manip-hero-title">
+      <span class="manip-hero-icon">🕵️</span>
+      <div>
+        <h3 class="mb-0" style="color:#f1f5f9;font-family:'Courier New',monospace;font-weight:700;letter-spacing:.04em">
+          MANIPULATION DETECTOR
+        </h3>
+        <p class="mb-0" style="color:#94a3b8;font-size:.82rem;letter-spacing:.12em;text-transform:uppercase">
+          4-Phase Market Manipulation Pattern Scanner
+        </p>
+      </div>
+    </div>
+    <!-- Phase legend -->
+    <div class="manip-phase-legend">
+      <div class="manip-phase-chip p1">① Accumulation</div>
+      <div class="manip-phase-chip p2">② Fake-Out</div>
+      <div class="manip-phase-chip p3">③ Stop Hunt</div>
+      <div class="manip-phase-chip p4">④ Result</div>
+    </div>
+  </div>
+
+  <!-- ── Controls ───────────────────────────────────────────── -->
+  <div class="manip-controls mb-4">
+    <div class="row g-3 align-items-end">
+
+      <!-- Mode -->
+      <div class="col-md-2">
+        <label class="manip-label">Scan Mode</label>
+        <select id="manipMode" class="form-select manip-select">
+          <option value="auto">Auto (from DB)</option>
+          <option value="single">Single Symbol</option>
+          <option value="multi_tf">Multi-Timeframe</option>
+        </select>
+      </div>
+
+      <!-- Symbol (shown in single / multi_tf mode) -->
+      <div class="col-md-2" id="manipSymbolCol">
+        <label class="manip-label">Symbol</label>
+        <input id="manipSymbol" class="form-control manip-input" value="BTC/USDT" placeholder="BTC/USDT">
+      </div>
+
+      <!-- Timeframe -->
+      <div class="col-md-2">
+        <label class="manip-label">Timeframe</label>
+        <select id="manipTimeframe" class="form-select manip-select">
+          <option value="5m">5m</option>
+          <option value="15m" selected>15m</option>
+          <option value="1h">1h</option>
+          <option value="4h">4h</option>
+        </select>
+      </div>
+
+      <!-- Min Volume -->
+      <div class="col-md-2" id="manipVolCol">
+        <label class="manip-label">Min 24h Vol ($)</label>
+        <select id="manipMinVol" class="form-select manip-select">
+          <option value="100000">$100K</option>
+          <option value="500000" selected>$500K</option>
+          <option value="1000000">$1M</option>
+          <option value="5000000">$5M</option>
+        </select>
+      </div>
+
+      <!-- Min Score -->
+      <div class="col-md-2">
+        <label class="manip-label">Min Score</label>
+        <input type="number" id="manipMinScore" class="form-control manip-input" value="20" min="0" max="100">
+      </div>
+
+      <!-- Run button -->
+      <div class="col-md-2">
+        <button class="btn manip-run-btn w-100" onclick="runManipulationScan()" id="manipRunBtn">
+          <span class="spinner-border spinner-border-sm d-none" id="manipSpinner"></span>
+          <span id="manipBtnText">🔍 Scan</span>
+        </button>
+      </div>
+
+    </div>
+
+    <!-- Max symbols row -->
+    <div class="row g-3 mt-1 align-items-center">
+      <div class="col-md-2">
+        <label class="manip-label">Max Symbols</label>
+        <input type="number" id="manipMaxSymbols" class="form-control manip-input" value="50" min="5" max="200">
+      </div>
+      <div class="col-md-2">
+        <label class="manip-label">Candles/Symbol</label>
+        <input type="number" id="manipCandleLimit" class="form-control manip-input" value="80" min="30" max="200">
+      </div>
+      <div class="col-md-3 d-flex align-items-end">
+        <div class="form-check form-check-inline mt-4">
+          <input class="form-check-input" type="checkbox" id="manipIncludeOB" checked>
+          <label class="form-check-label manip-label" for="manipIncludeOB" style="margin-top:2px">
+            Live Order-Book Overlay (current symbol)
+          </label>
+        </div>
+      </div>
+      <div class="col-md-5 d-flex align-items-end">
+        <div id="manipAlert" class="w-100"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Summary cards ──────────────────────────────────────── -->
+  <div class="row g-3 mb-4" id="manipSummaryRow" style="display:none!important">
+    <div class="col-6 col-md-3">
+      <div class="manip-stat-card critical">
+        <div class="manip-stat-num" id="mStatCritical">0</div>
+        <div class="manip-stat-label">CRITICAL</div>
+        <div class="manip-stat-sub">≥ 70 score</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="manip-stat-card high">
+        <div class="manip-stat-num" id="mStatHigh">0</div>
+        <div class="manip-stat-label">HIGH RISK</div>
+        <div class="manip-stat-sub">50–70 score</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="manip-stat-card moderate">
+        <div class="manip-stat-num" id="mStatModerate">0</div>
+        <div class="manip-stat-label">MODERATE</div>
+        <div class="manip-stat-sub">30–50 score</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="manip-stat-card scanned">
+        <div class="manip-stat-num" id="mStatScanned">0</div>
+        <div class="manip-stat-label">SCANNED</div>
+        <div class="manip-stat-sub" id="mStatMatches">0 matches</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Results table ──────────────────────────────────────── -->
+  <div id="manipResultsWrap" style="display:none">
+
+    <!-- Quick-filter pills -->
+    <div class="manip-filter-row mb-3">
+      <span class="manip-filter-label">Filter:</span>
+      <button class="manip-pill active" onclick="filterManipResults('all',this)">All</button>
+      <button class="manip-pill" onclick="filterManipResults('CRITICAL',this)">🔴 Critical</button>
+      <button class="manip-pill" onclick="filterManipResults('HIGH',this)">🟠 High</button>
+      <button class="manip-pill" onclick="filterManipResults('MODERATE',this)">🟡 Moderate</button>
+      <button class="manip-pill" onclick="filterManipResults('STOP_HUNT',this)">🎯 Stop Hunt</button>
+      <button class="manip-pill" onclick="filterManipResults('FAKEOUT',this)">💨 Fake-Out</button>
+      <button class="manip-pill" onclick="filterManipResults('ACCUMULATION',this)">📦 Accumulation</button>
+      <button class="manip-pill" onclick="filterManipResults('PUMP_AND_DUMP',this)">🚀 P&D</button>
+    </div>
+
+    <div class="table-responsive">
+      <table class="table manip-table mb-0">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Symbol</th>
+            <th>Risk</th>
+            <th>Score</th>
+            <th>Type</th>
+            <th>Phase 1<br><small>Accum.</small></th>
+            <th>Phase 2<br><small>Fake-Out</small></th>
+            <th>Phase 3<br><small>Stop Hunt</small></th>
+            <th>Phase 4<br><small>Result</small></th>
+            <th>Price</th>
+            <th>Chg %</th>
+            <th>Vol Spike</th>
+            <th>Recommendation</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="manipResultsBody">
+          <tr><td colspan="14" class="text-center text-muted py-4">Run a scan to see results</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ── Detail panel (appears on row click / Inspect button) ── -->
+  <div id="manipDetailPanel" class="manip-detail-panel mt-4" style="display:none">
+
+    <div class="manip-detail-header">
+      <div>
+        <span id="detailSymbol" class="manip-detail-sym">--</span>
+        <span id="detailTypeTag" class="manip-type-tag ms-2">--</span>
+      </div>
+      <div class="d-flex align-items-center gap-3">
+        <div>
+          <span class="manip-label">Composite Score</span>
+          <div id="detailScoreGauge" class="manip-gauge-wrap">
+            <div class="manip-gauge-track">
+              <div id="detailScoreFill" class="manip-gauge-fill" style="width:0%"></div>
+            </div>
+            <span id="detailScoreVal" class="manip-gauge-val">0</span>
+          </div>
+        </div>
+        <button class="btn manip-close-btn" onclick="document.getElementById('manipDetailPanel').style.display='none'">✕ Close</button>
+      </div>
+    </div>
+
+    <!-- Phase breakdown cards -->
+    <div class="row g-3 mt-1 mb-3" id="detailPhaseCards">
+      <!-- injected by JS -->
+    </div>
+
+    <!-- Evidence grid + recommendation -->
+    <div class="row g-3">
+      <div class="col-md-8">
+        <div class="manip-evidence-box">
+          <h6 class="manip-evidence-title">📊 Evidence Details</h6>
+          <div id="detailEvidence" class="row g-2">
+            <!-- injected by JS -->
+          </div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="manip-rec-box">
+          <h6 class="manip-rec-title">Trading Recommendation</h6>
+          <div id="detailRec" class="manip-rec-text">--</div>
+          <hr style="border-color:#334155">
+          <div class="manip-label mb-1">Order-Book Signals</div>
+          <div id="detailOBSignals">
+            <span class="text-muted small">No OB overlay data</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /detail panel -->
+
+</div><!-- /tab-pane manipulationScanner -->
+
+
+<!-- ═══════════════════════════════════════════════════════════
+     MANIPULATION SCANNER CSS  (paste inside <style> or style.css)
+═══════════════════════════════════════════════════════════════ -->
+<style>
+/* ── Hero ─────────────────────────────────────────────────── */
+.manip-hero {
+  display:flex; justify-content:space-between; align-items:center;
+  flex-wrap:wrap; gap:12px;
+  background:linear-gradient(135deg,#0f172a 0%,#1e293b 50%,#0f172a 100%);
+  border:1px solid #1e3a5f; border-radius:12px; padding:20px 24px;
+}
+.manip-hero-title { display:flex; align-items:center; gap:14px; }
+.manip-hero-icon { font-size:2.2rem; filter:drop-shadow(0 0 8px #3b82f6); }
+.manip-phase-legend { display:flex; gap:8px; flex-wrap:wrap; }
+.manip-phase-chip {
+  padding:4px 12px; border-radius:20px; font-size:.75rem;
+  font-family:'Courier New',monospace; font-weight:600; letter-spacing:.04em;
+}
+.manip-phase-chip.p1 { background:rgba(59,130,246,.15); color:#60a5fa; border:1px solid #1e40af; }
+.manip-phase-chip.p2 { background:rgba(245,158,11,.15); color:#fbbf24; border:1px solid #92400e; }
+.manip-phase-chip.p3 { background:rgba(239,68,68,.15);  color:#f87171; border:1px solid #7f1d1d; }
+.manip-phase-chip.p4 { background:rgba(16,185,129,.15); color:#34d399; border:1px solid #064e3b; }
+
+/* ── Controls ─────────────────────────────────────────────── */
+.manip-controls {
+  background:#1e293b; border:1px solid #334155;
+  border-radius:10px; padding:18px 20px;
+}
+.manip-label {
+  font-size:.72rem; font-weight:600; letter-spacing:.08em;
+  text-transform:uppercase; color:#94a3b8; display:block; margin-bottom:5px;
+}
+.manip-select, .manip-input {
+  background:#0f172a !important; border:1px solid #334155 !important;
+  color:#e2e8f0 !important; border-radius:6px; font-size:.88rem;
+}
+.manip-select:focus, .manip-input:focus {
+  border-color:#3b82f6 !important; box-shadow:0 0 0 2px rgba(59,130,246,.2) !important;
+}
+.manip-run-btn {
+  background:linear-gradient(135deg,#1d4ed8,#4f46e5);
+  color:#fff; border:none; font-weight:700; letter-spacing:.06em;
+  padding:10px 0; border-radius:8px; font-size:.9rem;
+  transition:opacity .2s, transform .1s;
+}
+.manip-run-btn:hover { opacity:.9; transform:translateY(-1px); }
+.manip-run-btn:active { transform:translateY(0); }
+
+/* ── Stat cards ───────────────────────────────────────────── */
+.manip-stat-card {
+  border-radius:10px; padding:16px; text-align:center;
+  border:1px solid transparent;
+}
+.manip-stat-card.critical { background:rgba(239,68,68,.12); border-color:#7f1d1d; }
+.manip-stat-card.high     { background:rgba(249,115,22,.12); border-color:#7c2d12; }
+.manip-stat-card.moderate { background:rgba(245,158,11,.12); border-color:#78350f; }
+.manip-stat-card.scanned  { background:rgba(59,130,246,.10); border-color:#1e3a5f; }
+.manip-stat-num  { font-size:2rem; font-weight:800; font-family:'Courier New',monospace; color:#f1f5f9; }
+.manip-stat-card.critical .manip-stat-num { color:#ef4444; }
+.manip-stat-card.high     .manip-stat-num { color:#f97316; }
+.manip-stat-card.moderate .manip-stat-num { color:#f59e0b; }
+.manip-stat-label { font-size:.7rem; font-weight:700; letter-spacing:.12em; text-transform:uppercase; color:#94a3b8; }
+.manip-stat-sub   { font-size:.68rem; color:#64748b; margin-top:2px; }
+
+/* ── Filter pills ─────────────────────────────────────────── */
+.manip-filter-row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.manip-filter-label { font-size:.75rem; color:#64748b; font-weight:600; text-transform:uppercase; letter-spacing:.08em; }
+.manip-pill {
+  padding:4px 14px; border-radius:20px; border:1px solid #334155;
+  background:#1e293b; color:#94a3b8; font-size:.78rem; font-weight:600;
+  cursor:pointer; transition:all .2s;
+}
+.manip-pill:hover { border-color:#3b82f6; color:#60a5fa; }
+.manip-pill.active { background:#1d4ed8; border-color:#3b82f6; color:#fff; }
+
+/* ── Results table ────────────────────────────────────────── */
+.manip-table { border-collapse:separate; border-spacing:0; }
+.manip-table thead th {
+  background:#1e293b; color:#94a3b8; font-size:.72rem;
+  font-weight:700; letter-spacing:.07em; text-transform:uppercase;
+  border-bottom:2px solid #334155; padding:10px 12px; white-space:nowrap;
+}
+.manip-table tbody tr {
+  transition:background .15s; cursor:pointer;
+  border-bottom:1px solid #1e293b;
+}
+.manip-table tbody tr:hover { background:rgba(59,130,246,.06); }
+.manip-table tbody td { padding:10px 12px; font-size:.84rem; color:#cbd5e1; vertical-align:middle; }
+.manip-table tbody tr.row-critical { border-left:3px solid #ef4444; }
+.manip-table tbody tr.row-high     { border-left:3px solid #f97316; }
+.manip-table tbody tr.row-moderate { border-left:3px solid #f59e0b; }
+.manip-table tbody tr.row-low      { border-left:3px solid #334155; }
+
+/* Phase dot badges */
+.phase-dot {
+  display:inline-block; width:22px; height:22px; border-radius:50%;
+  font-size:.65rem; font-weight:700; text-align:center; line-height:22px;
+  transition:transform .2s;
+}
+.phase-dot.active   { transform:scale(1.15); }
+.phase-dot.p1-on    { background:rgba(59,130,246,.3); color:#60a5fa; border:1.5px solid #3b82f6; }
+.phase-dot.p1-off   { background:rgba(59,130,246,.05); color:#334155; border:1.5px solid #1e293b; }
+.phase-dot.p2-on    { background:rgba(245,158,11,.3); color:#fbbf24; border:1.5px solid #f59e0b; }
+.phase-dot.p2-off   { background:rgba(245,158,11,.05); color:#334155; border:1.5px solid #1e293b; }
+.phase-dot.p3-on    { background:rgba(239,68,68,.3); color:#f87171; border:1.5px solid #ef4444; }
+.phase-dot.p3-off   { background:rgba(239,68,68,.05); color:#334155; border:1.5px solid #1e293b; }
+.phase-dot.p4-on    { background:rgba(16,185,129,.3); color:#34d399; border:1.5px solid #10b981; }
+.phase-dot.p4-off   { background:rgba(16,185,129,.05); color:#334155; border:1.5px solid #1e293b; }
+
+/* Risk badge */
+.manip-risk {
+  display:inline-block; padding:3px 10px; border-radius:4px;
+  font-size:.7rem; font-weight:800; letter-spacing:.06em; text-transform:uppercase;
+}
+.manip-risk.critical { background:rgba(239,68,68,.2); color:#f87171; border:1px solid #7f1d1d; }
+.manip-risk.high     { background:rgba(249,115,22,.2); color:#fb923c; border:1px solid #7c2d12; }
+.manip-risk.moderate { background:rgba(245,158,11,.2); color:#fbbf24; border:1px solid #78350f; }
+.manip-risk.low      { background:rgba(16,185,129,.1); color:#34d399; border:1px solid #064e3b; }
+
+/* Score bar in table */
+.score-bar-wrap { display:flex; align-items:center; gap:6px; min-width:90px; }
+.score-bar-track {
+  flex:1; height:6px; border-radius:3px; background:#1e293b;
+  overflow:hidden; border:1px solid #334155;
+}
+.score-bar-fill { height:100%; border-radius:3px; transition:width .4s; }
+.score-bar-fill.critical { background:#ef4444; }
+.score-bar-fill.high     { background:#f97316; }
+.score-bar-fill.moderate { background:#f59e0b; }
+.score-bar-fill.low      { background:#10b981; }
+.score-bar-num { font-size:.8rem; font-weight:700; font-family:'Courier New',monospace; min-width:28px; }
+
+/* Type tag */
+.manip-type-tag {
+  display:inline-block; padding:2px 9px; border-radius:4px;
+  font-size:.68rem; font-weight:700; letter-spacing:.05em;
+  background:rgba(99,102,241,.15); color:#a5b4fc; border:1px solid #4338ca;
+}
+.manip-inspect-btn {
+  padding:3px 10px; border-radius:5px; font-size:.75rem; font-weight:600;
+  background:rgba(59,130,246,.15); border:1px solid #1e40af; color:#60a5fa;
+  cursor:pointer; transition:all .2s; white-space:nowrap;
+}
+.manip-inspect-btn:hover { background:rgba(59,130,246,.3); }
+
+/* ── Detail panel ─────────────────────────────────────────── */
+.manip-detail-panel {
+  background:#0f172a; border:1px solid #334155; border-radius:12px; padding:24px;
+}
+.manip-detail-header {
+  display:flex; justify-content:space-between; align-items:flex-start;
+  flex-wrap:wrap; gap:12px; margin-bottom:16px;
+}
+.manip-detail-sym { font-size:1.4rem; font-weight:800; color:#f1f5f9; font-family:'Courier New',monospace; }
+.manip-gauge-wrap { display:flex; align-items:center; gap:8px; margin-top:4px; }
+.manip-gauge-track {
+  width:150px; height:8px; background:#1e293b; border-radius:4px;
+  overflow:hidden; border:1px solid #334155;
+}
+.manip-gauge-fill { height:100%; border-radius:4px; transition:width .6s ease; }
+.manip-gauge-val { font-size:1.1rem; font-weight:800; font-family:'Courier New',monospace; color:#f1f5f9; }
+.manip-close-btn {
+  background:rgba(239,68,68,.15); border:1px solid #7f1d1d; color:#f87171;
+  font-size:.8rem; padding:6px 14px; border-radius:6px;
+}
+.manip-close-btn:hover { background:rgba(239,68,68,.3); color:#fca5a5; }
+
+/* Phase breakdown cards in detail */
+.manip-phase-card {
+  border-radius:10px; padding:16px; border:1px solid transparent;
+}
+.manip-phase-card.p1 { background:rgba(59,130,246,.08); border-color:#1e3a5f; }
+.manip-phase-card.p2 { background:rgba(245,158,11,.08); border-color:#78350f; }
+.manip-phase-card.p3 { background:rgba(239,68,68,.08);  border-color:#7f1d1d; }
+.manip-phase-card.p4 { background:rgba(16,185,129,.08); border-color:#064e3b; }
+.manip-phase-card-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
+.manip-phase-card-name { font-size:.8rem; font-weight:700; letter-spacing:.06em; text-transform:uppercase; }
+.manip-phase-card.p1 .manip-phase-card-name { color:#60a5fa; }
+.manip-phase-card.p2 .manip-phase-card-name { color:#fbbf24; }
+.manip-phase-card.p3 .manip-phase-card-name { color:#f87171; }
+.manip-phase-card.p4 .manip-phase-card-name { color:#34d399; }
+.manip-phase-score { font-size:1.4rem; font-weight:800; font-family:'Courier New',monospace; }
+.manip-kv { display:flex; justify-content:space-between; font-size:.78rem; margin-bottom:4px; }
+.manip-kv-key { color:#64748b; }
+.manip-kv-val { color:#cbd5e1; font-weight:600; }
+.manip-detected-tag {
+  display:inline-block; padding:2px 8px; border-radius:3px;
+  font-size:.65rem; font-weight:700; letter-spacing:.06em;
+}
+.manip-detected-tag.yes { background:rgba(16,185,129,.2); color:#34d399; }
+.manip-detected-tag.no  { background:rgba(100,116,139,.15); color:#64748b; }
+
+/* Evidence box */
+.manip-evidence-box {
+  background:#1e293b; border:1px solid #334155; border-radius:10px; padding:16px;
+}
+.manip-evidence-title { color:#94a3b8; font-size:.8rem; font-weight:700; text-transform:uppercase; letter-spacing:.08em; margin-bottom:12px; }
+.manip-ev-item { background:#0f172a; border:1px solid #334155; border-radius:7px; padding:10px 12px; }
+.manip-ev-label { font-size:.68rem; color:#64748b; text-transform:uppercase; letter-spacing:.06em; }
+.manip-ev-val { font-size:.9rem; font-weight:700; color:#e2e8f0; font-family:'Courier New',monospace; margin-top:2px; }
+
+/* Recommendation box */
+.manip-rec-box {
+  background:#1e293b; border:1px solid #334155; border-radius:10px;
+  padding:16px; height:100%;
+}
+.manip-rec-title { color:#94a3b8; font-size:.8rem; font-weight:700; text-transform:uppercase; letter-spacing:.08em; margin-bottom:10px; }
+.manip-rec-text { font-size:.9rem; color:#e2e8f0; line-height:1.5; font-weight:500; }
+
+/* OB signal chips */
+.ob-signal-chip {
+  display:inline-block; margin:3px 3px 3px 0; padding:3px 9px;
+  border-radius:4px; font-size:.7rem; font-weight:600;
+}
+.ob-signal-chip.high   { background:rgba(239,68,68,.2); color:#f87171; border:1px solid #7f1d1d; }
+.ob-signal-chip.medium { background:rgba(245,158,11,.2); color:#fbbf24; border:1px solid #78350f; }
+</style>
+
+
+<!-- ═══════════════════════════════════════════════════════════
+     MANIPULATION SCANNER JAVASCRIPT
+     Paste this inside your existing <script> block
+═══════════════════════════════════════════════════════════════ -->
+<script>
+
+// ─── State ────────────────────────────────────────────────────
+let manipAllResults = [];
+
+// ─── Mode toggle ──────────────────────────────────────────────
+document.getElementById("manipMode").addEventListener("change", function() {
+  const isAuto = this.value === "auto";
+  document.getElementById("manipSymbolCol").style.display = isAuto ? "none" : "";
+  document.getElementById("manipVolCol").style.display    = isAuto ? "" : "none";
+});
+
+// ─── Main scan dispatcher ─────────────────────────────────────
+async function runManipulationScan() {
+  const mode = document.getElementById("manipMode").value;
+  if (mode === "single")   return runSingleManipAnalysis();
+  if (mode === "multi_tf") return runMultiTFManipAnalysis();
+  return runAutoManipScan();
+}
+
+// ─────────────────────────────────────────────────────────────
+// AUTO SCAN (multiple symbols from DB)
+// ─────────────────────────────────────────────────────────────
+async function runAutoManipScan() {
+  manipSetLoading(true);
+  manipClearAlert();
+
+  try {
+    const payload = {
+      timeframe:    document.getElementById("manipTimeframe").value,
+      candle_limit: parseInt(document.getElementById("manipCandleLimit").value),
+      max_symbols:  parseInt(document.getElementById("manipMaxSymbols").value),
+      min_volume_usd: parseFloat(document.getElementById("manipMinVol").value),
+      min_score:    parseFloat(document.getElementById("manipMinScore").value),
+      include_ob:   document.getElementById("manipIncludeOB").checked,
+    };
+
+    const res  = await fetch(API + "/scan_manipulation", {
+      method: "POST", headers: {"Content-Type":"application/json"},
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+
+    if (!data.success) throw new Error(data.error || "Scan failed");
+
+    manipAllResults = data.results || [];
+    renderManipSummary(data.summary, data.scanned, data.matches);
+    renderManipTable(manipAllResults);
+    manipShowAlert(
+      `✅ Scanned ${data.scanned} symbols · ${data.matches} matches · ${data.summary.critical} critical`,
+      "success"
+    );
+
+  } catch(e) {
+    manipShowAlert("❌ " + e.message, "danger");
+  } finally {
+    manipSetLoading(false);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// SINGLE SYMBOL DEEP ANALYSIS
+// ─────────────────────────────────────────────────────────────
+async function runSingleManipAnalysis() {
+  manipSetLoading(true);
+  manipClearAlert();
+
+  try {
+    const symbol = (document.getElementById("manipSymbol").value || "BTC/USDT").trim().toUpperCase();
+    const res  = await fetch(API + "/analyze_symbol_manipulation", {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({
+        symbol,
+        timeframe:  document.getElementById("manipTimeframe").value,
+        limit:      parseInt(document.getElementById("manipCandleLimit").value),
+        include_ob: document.getElementById("manipIncludeOB").checked,
+      })
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error || "Analysis failed");
+
+    manipAllResults = [data];
+    renderManipSummary(
+      { critical: data.risk_level==="CRITICAL"?1:0, high:data.risk_level==="HIGH"?1:0, moderate:data.risk_level==="MODERATE"?1:0 },
+      1, 1
+    );
+    renderManipTable([data]);
+    renderManipDetail(data);
+
+  } catch(e) {
+    manipShowAlert("❌ " + e.message, "danger");
+  } finally {
+    manipSetLoading(false);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// MULTI-TIMEFRAME ANALYSIS
+// ─────────────────────────────────────────────────────────────
+async function runMultiTFManipAnalysis() {
+  manipSetLoading(true);
+  manipClearAlert();
+
+  try {
+    const symbol = (document.getElementById("manipSymbol").value || "BTC/USDT").trim().toUpperCase();
+    const res  = await fetch(API + "/manipulation_history", {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ symbol, timeframes:["5m","15m","1h","4h"], limit: 100 })
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error || "Multi-TF failed");
+
+    // Render a summary for each TF
+    const fakeResults = Object.entries(data.timeframes).map(([tf, res]) => ({
+      symbol, timeframe: tf,
+      composite_score: res.composite_score || 0,
+      risk_level: res.risk_level || "LOW",
+      risk_color: "#10b981",
+      manipulation_type: res.manipulation_type || "UNKNOWN",
+      phases_detected: res.phases_detected || 0,
+      recommendation: res.recommendation || "--",
+      current_price: "--", price_change: 0, volume_spike: 1,
+      phases: {
+        phase1_accumulation:{detected:false,score:0,evidence:{}},
+        phase2_fakeout:{detected:false,score:0,evidence:{}},
+        phase3_stop_hunt:{detected:false,score:0,evidence:{}},
+        phase4_result:{detected:false,score:0,evidence:{}},
+      }
+    }));
+
+    manipAllResults = fakeResults;
+    renderManipTable(fakeResults);
+    manipShowAlert(
+      `📊 ${symbol} multi-TF analysis · Overall Score: ${data.overall_score}`,
+      "info"
+    );
+
+  } catch(e) {
+    manipShowAlert("❌ " + e.message, "danger");
+  } finally {
+    manipSetLoading(false);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// RENDER FUNCTIONS
+// ─────────────────────────────────────────────────────────────
+
+function renderManipSummary(summary, scanned, matches) {
+  document.getElementById("manipSummaryRow").style.display = "";
+  document.getElementById("mStatCritical").textContent = summary.critical || 0;
+  document.getElementById("mStatHigh").textContent     = summary.high     || 0;
+  document.getElementById("mStatModerate").textContent  = summary.moderate || 0;
+  document.getElementById("mStatScanned").textContent   = scanned;
+  document.getElementById("mStatMatches").textContent   = matches + " matches";
+}
+
+function renderManipTable(results) {
+  const wrap = document.getElementById("manipResultsWrap");
+  const tbody = document.getElementById("manipResultsBody");
+  wrap.style.display = "";
+
+  if (!results || results.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="14" class="text-center text-muted py-4">No results above the minimum score threshold</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = results.map((r, i) => {
+    const risk      = (r.risk_level || "LOW").toLowerCase();
+    const ph        = r.phases || {};
+    const p1 = ph.phase1_accumulation || {};
+    const p2 = ph.phase2_fakeout       || {};
+    const p3 = ph.phase3_stop_hunt     || {};
+    const p4 = ph.phase4_result        || {};
+
+    const scoreClass = risk;
+    const priceStr   = typeof r.current_price === "number" ? r.current_price.toFixed(4) : (r.current_price || "--");
+    const chgStr     = typeof r.price_change  === "number" ? (r.price_change >= 0 ? "+" : "") + r.price_change.toFixed(2) + "%" : "--";
+    const chgColor   = (r.price_change || 0) >= 0 ? "#10b981" : "#ef4444";
+    const volStr     = typeof r.volume_spike  === "number" ? r.volume_spike.toFixed(2) + "x" : "--";
+    const typeShort  = (r.manipulation_type || "UNKNOWN").replace(/_/g," ");
+
+    return `
+      <tr class="row-${risk}" onclick="inspectManipResult(${i})" data-risk="${r.risk_level}" data-type="${r.manipulation_type}">
+        <td style="color:#64748b">${i+1}</td>
+        <td style="font-weight:700;color:#f1f5f9;font-family:'Courier New',monospace">${r.symbol}</td>
+        <td><span class="manip-risk ${risk}">${r.risk_level || "LOW"}</span></td>
+        <td>
+          <div class="score-bar-wrap">
+            <div class="score-bar-track">
+              <div class="score-bar-fill ${scoreClass}" style="width:${Math.min(100,r.composite_score||0)}%"></div>
+            </div>
+            <span class="score-bar-num" style="color:${r.risk_color||'#94a3b8'}">${(r.composite_score||0).toFixed(0)}</span>
+          </div>
+        </td>
+        <td><span class="manip-type-tag">${typeShort}</span></td>
+        <td><span class="phase-dot ${p1.detected?'p1-on active':'p1-off'}" title="Score: ${p1.score||0}">${p1.detected?"✓":"·"}</span></td>
+        <td><span class="phase-dot ${p2.detected?'p2-on active':'p2-off'}" title="Score: ${p2.score||0}">${p2.detected?"✓":"·"}</span></td>
+        <td><span class="phase-dot ${p3.detected?'p3-on active':'p3-off'}" title="Score: ${p3.score||0}">${p3.detected?"✓":"·"}</span></td>
+        <td><span class="phase-dot ${p4.detected?'p4-on active':'p4-off'}" title="Score: ${p4.score||0}">${p4.detected?"✓":"·"}</span></td>
+        <td style="font-family:'Courier New',monospace">${priceStr}</td>
+        <td style="color:${chgColor};font-weight:600">${chgStr}</td>
+        <td style="color:${(r.volume_spike||1)>2?'#f59e0b':'#94a3b8'}">${volStr}</td>
+        <td style="font-size:.78rem;color:#cbd5e1;max-width:200px">${r.recommendation||"--"}</td>
+        <td>
+          <button class="manip-inspect-btn" onclick="event.stopPropagation();inspectManipResult(${i})">
+            🔍 Inspect
+          </button>
+        </td>
+      </tr>`;
+  }).join("");
+}
+
+function inspectManipResult(idx) {
+  const r = manipAllResults[idx];
+  if (!r) return;
+  renderManipDetail(r);
+  document.getElementById("manipDetailPanel").scrollIntoView({behavior:"smooth", block:"start"});
+}
+
+function renderManipDetail(r) {
+  const panel = document.getElementById("manipDetailPanel");
+  panel.style.display = "block";
+
+  // Header
+  document.getElementById("detailSymbol").textContent = r.symbol;
+  document.getElementById("detailTypeTag").textContent = (r.manipulation_type||"UNKNOWN").replace(/_/g," ");
+
+  // Score gauge
+  const score = r.composite_score || 0;
+  document.getElementById("detailScoreVal").textContent = score.toFixed(0);
+  document.getElementById("detailScoreFill").style.width  = Math.min(100, score) + "%";
+  document.getElementById("detailScoreFill").style.background = r.risk_color || "#10b981";
+
+  // Phase cards
+  const ph = r.phases || {};
+  const phases = [
+    { key:"phase1_accumulation", label:"① Accumulation",  cls:"p1", color:"#60a5fa",
+      hints:["price_range_pct","volume_ratio","vol_slope_positive"] },
+    { key:"phase2_fakeout",      label:"② Fake-Out",       cls:"p2", color:"#fbbf24",
+      hints:["resistance","support","breakout_pct","volume_excess","direction"] },
+    { key:"phase3_stop_hunt",    label:"③ Stop Hunt",      cls:"p3", color:"#f87171",
+      hints:["key_high","key_low","wick_body_ratio","volume_spike","direction"] },
+    { key:"phase4_result",       label:"④ Result",         cls:"p4", color:"#34d399",
+      hints:["move_pct","volume_ratio","consistency","direction"] },
+  ];
+
+  document.getElementById("detailPhaseCards").innerHTML = phases.map(ph_def => {
+    const p    = ph[ph_def.key] || {};
+    const ev   = p.evidence || {};
+    const det  = p.detected || false;
+    const score = p.score   || 0;
+
+    const kvs = ph_def.hints.map(k => {
+      if (!(k in ev)) return "";
+      const raw = ev[k];
+      let display = "";
+      if      (typeof raw === "boolean") display = raw ? "Yes" : "No";
+      else if (typeof raw === "number")  display = raw.toFixed(typeof raw === "number" && raw > 10 ? 2 : 4);
+      else                               display  = String(raw).replace(/_/g," ");
+      return `<div class="manip-kv"><span class="manip-kv-key">${k.replace(/_/g," ")}</span><span class="manip-kv-val">${display}</span></div>`;
+    }).join("");
+
+    return `
+      <div class="col-md-3">
+        <div class="manip-phase-card ${ph_def.cls}">
+          <div class="manip-phase-card-header">
+            <span class="manip-phase-card-name">${ph_def.label}</span>
+            <span class="manip-detected-tag ${det?'yes':'no'}">${det?"ACTIVE":"CLEAR"}</span>
+          </div>
+          <div class="manip-phase-score" style="color:${ph_def.color}">${score.toFixed(1)}</div>
+          <div style="font-size:.68rem;color:#64748b;margin-bottom:8px">score / 100</div>
+          ${kvs}
+        </div>
+      </div>`;
+  }).join("");
+
+  // Evidence grid
+  const evItems = [
+    {label:"Current Price",   val: typeof r.current_price==="number" ? r.current_price.toFixed(6) : "--"},
+    {label:"Price Change",    val: typeof r.price_change==="number"  ? (r.price_change>=0?"+":"")+r.price_change.toFixed(2)+"%" : "--"},
+    {label:"Volume Spike",    val: typeof r.volume_spike==="number"  ? r.volume_spike.toFixed(2)+"x" : "--"},
+    {label:"Phases Active",   val: (r.phases_detected||0)+"/4"},
+    {label:"Timeframe",       val: r.timeframe || "--"},
+    {label:"Risk Level",      val: r.risk_level || "--"},
+  ];
+  document.getElementById("detailEvidence").innerHTML = evItems.map(ev =>
+    `<div class="col-6 col-md-4">
+       <div class="manip-ev-item">
+         <div class="manip-ev-label">${ev.label}</div>
+         <div class="manip-ev-val">${ev.val}</div>
+       </div>
+     </div>`
+  ).join("");
+
+  // Recommendation
+  document.getElementById("detailRec").textContent = r.recommendation || "--";
+
+  // OB signals
+  const ob = r.order_book_signals;
+  if (ob && ob.signals && ob.signals.length) {
+    document.getElementById("detailOBSignals").innerHTML = ob.signals.map(s =>
+      `<div class="ob-signal-chip ${s.severity.toLowerCase()}" title="${s.desc}">${s.type.replace(/_/g," ")}</div>`
+    ).join("") +
+    `<div class="mt-2" style="font-size:.75rem;color:#64748b">
+       Imbalance: ${(ob.imbalance*100).toFixed(1)}% &nbsp;|&nbsp;
+       Buy 60s: ${(ob.buy_vol_60s||0).toFixed(3)} &nbsp;|&nbsp;
+       Sell 60s: ${(ob.sell_vol_60s||0).toFixed(3)}
+     </div>`;
+  } else {
+    document.getElementById("detailOBSignals").innerHTML =
+      `<span class="text-muted small">${ob ? "No manipulation signals in order book" : "OB overlay not active"}</span>`;
+  }
+}
+
+// ─── Filter ────────────────────────────────────────────────────
+function filterManipResults(filter, btn) {
+  document.querySelectorAll(".manip-pill").forEach(p => p.classList.remove("active"));
+  btn.classList.add("active");
+
+  const rows = document.querySelectorAll("#manipResultsBody tr[data-risk]");
+  rows.forEach(row => {
+    if (filter === "all") {
+      row.style.display = "";
+      return;
+    }
+    const risk = row.getAttribute("data-risk") || "";
+    const type = row.getAttribute("data-type") || "";
+    const show = risk === filter || type.includes(filter) ||
+                 (filter === "STOP_HUNT"    && type.includes("STOP_HUNT")) ||
+                 (filter === "FAKEOUT"      && type.includes("FAKEOUT"))   ||
+                 (filter === "ACCUMULATION" && type === "ACCUMULATION")    ||
+                 (filter === "PUMP_AND_DUMP" && type === "PUMP_AND_DUMP");
+    row.style.display = show ? "" : "none";
+  });
+}
+
+// ─── Utilities ────────────────────────────────────────────────
+function manipSetLoading(on) {
+  document.getElementById("manipSpinner").classList.toggle("d-none", !on);
+  document.getElementById("manipBtnText").textContent = on ? "Scanning…" : "🔍 Scan";
+  document.getElementById("manipRunBtn").disabled = on;
+}
+function manipShowAlert(msg, type="info") {
+  document.getElementById("manipAlert").innerHTML =
+    `<div class="alert alert-${type} py-2 mb-0" style="font-size:.82rem">${msg}</div>`;
+}
+function manipClearAlert() {
+  document.getElementById("manipAlert").innerHTML = "";
+}
+
+// Auto-trigger scan when tab becomes active
+document.querySelector('#mainTabs a[href="#manipulationScanner"]')?.addEventListener('shown.bs.tab', () => {
+  if (manipAllResults.length === 0) {
+    setTimeout(runAutoManipScan, 400);
+  }
+});
+
+</script>

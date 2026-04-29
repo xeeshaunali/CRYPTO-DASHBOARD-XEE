@@ -1,0 +1,60 @@
+version: '3.8'
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: binance_mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: binance_trading
+      MYSQL_USER: trader
+      MYSQL_PASSWORD: trader123
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - binance_network
+
+  phpmyadmin:
+    image: phpmyadmin:latest
+    container_name: binance_phpmyadmin
+    restart: always
+    environment:
+      PMA_HOST: mysql
+      PMA_PORT: 3306
+      PMA_USER: root
+      PMA_PASSWORD: root
+    ports:
+      - "8080:80"
+    depends_on:
+      - mysql
+    networks:
+      - binance_network
+
+  flask_app:
+    build: .
+    container_name: binance_flask_app
+    restart: always
+    environment:
+      FLASK_ENV: production
+      DB_HOST: mysql
+      DB_USER: root
+      DB_PASSWORD: root
+      DB_NAME: binance_trading
+    ports:
+      - "5000:5000"
+    depends_on:
+      - mysql
+    networks:
+      - binance_network
+    volumes:
+      - ./:/app
+
+volumes:
+  mysql_data:
+
+networks:
+  binance_network:
+    driver: bridge

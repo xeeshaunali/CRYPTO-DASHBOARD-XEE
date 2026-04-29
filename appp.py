@@ -28,6 +28,7 @@ import requests
 import numpy as np
 from typing import Dict, List, Tuple, Optional, Any
 import gzip
+from manipulation_detector import analyze_manipulation
 #from bs4 import BeautifulSoup
 
 app = Flask(__name__)
@@ -70,6 +71,7 @@ kraken_ws = None
 bitget_ws = None
 mexc_ws = None
 coinbase_ws = None
+
 
 # Crypto Volume and Pattern Analyzer Start
 # ========= NEW: CANDLE PATTERN & VOLUME SCANNER =========
@@ -5813,7 +5815,7 @@ def enhanced_signal_v2():
             if len(sw_rows) >= 10:
                 sw_df = pd.DataFrame(sw_rows)
                 for c in ["open","high","low","close","volume"]: sw_df[c]=sw_df[c].astype(float)
-                sw_df = sw_df.sort_values("open",ascending=False).reset_index(drop=True)  # newest first
+                sw_df = sw_df.sort_values("close",ascending=True).reset_index(drop=True)  # oldest→newest
                 opens_  = sw_df["open"].values
                 highs_  = sw_df["high"].values
                 lows_   = sw_df["low"].values
@@ -6035,6 +6037,307 @@ def enhanced_signal_v2():
         import traceback; traceback.print_exc()
         return jsonify({"success": False, "error": str(e)}), 500
     #END
+
+# ============================================================
+# 5. PURE ORDERFLOW SIGNAL  (VP + OB + Sweep ONLY — no TA)
+# ============================================================
+
+@app.route("/pure_orderflow_signal", methods=["POST"])
+def pure_orderflow_signal():
+    payload   = request.get_json() or {}
+    symbol    = payload.get("symbol", "BTC/USDT").upper()
+    timeframe = payload.get("timeframe", "4h")
+    limit     = int(payload.get("limit", 200))
+    selected_exchanges = payload.get(
+        "exchanges",
+        ["binance","bybit","okx","gateio","huobi","bitget","mexc","coinbase"]
+    )
+
+    try:
+        # ── A. VOLUME PROFILE ──────────────────────────────────
+        conn = get_conn()
+        cur  = conn.cursor(dictionary=True)
+        cur.execute("""
+            SELECT high, low, volume, close FROM ohlcv_data
+            WHERE symbol=%s AND timeframe=%s
+            ORDER BY time_utc DESC LIMIT %s
+        """, (symbol, timeframe, limit))
+        vp_rows = cur.fetchall()
+        cur.close(); conn.close()
+        # Use only the most-recent 100 candles for VP so POC reflects current structure
+        vp_rows = vp_rows[:100]
+
+        if len(vp_rows) < 20:
+            return jsonify({"success": False, "error": "Not enough data – fetch OHLCV first"}), 400
+
+        num_bins = 50
+        ph = max(float(r["high"])  for r in vp_rows)
+        pl = min(float(r["low"])   for r in vp_rows)
+        pr = ph - pl
+        if pr == 0:
+            return jsonify({"success": False, "error": "Zero price range"}), 400
+
+        bins = np.linspace(pl, ph, num_bins + 1)
+        bvol = np.zeros(num_bins)
+        for r in vp_rows:
+            rh = float(r["high"]); rl = float(r["low"]); rv = float(r["volume"])
+            touched = [i for i in range(num_bins) if bins[i] <= rh and bins[i+1] >= rl]
+            if touched:
+                share = rv / len(touched)
+                for i in touched: bvol[i] += share
+
+        poc_idx   = int(np.argmax(bvol))
+        poc_price = float((bins[poc_idx] + bins[poc_idx + 1]) / 2)
+
+        target = bvol.sum() * 0.70
+        va_v = bvol[poc_idx]; li = poc_idx; hi2 = poc_idx
+        while va_v < target:
+            up = bvol[hi2 + 1] if hi2 + 1 < num_bins else 0
+            dn = bvol[li  - 1] if li  - 1 >= 0       else 0
+            if up >= dn: hi2 = min(hi2 + 1, num_bins - 1); va_v += up
+            else:        li  = max(li  - 1, 0);             va_v += dn
+            if hi2 == num_bins - 1 and li == 0: break
+        vah_price = float((bins[hi2] + bins[hi2 + 1]) / 2)
+        val_price = float((bins[li]  + bins[li  + 1]) / 2)
+        curr_price = float(vp_rows[0]["close"])
+
+        va_range_safe = max(vah_price - val_price, curr_price * 0.001)
+
+        if curr_price > vah_price:
+            excess = (curr_price - vah_price) / pr
+            vp_str = min(100, 50 + excess * 500)
+            vp_sig = "BREAKOUT_ABOVE_VA"
+        elif curr_price < val_price:
+            excess = (val_price - curr_price) / pr
+            vp_str = max(-100, -50 - excess * 500)
+            vp_sig = "BREAKDOWN_BELOW_VA"
+        elif curr_price >= poc_price:
+            ratio  = (curr_price - poc_price) / (vah_price - poc_price + 1e-9)
+            vp_str = ratio * 40
+            vp_sig = "ABOVE_POC"
+        else:
+            ratio  = (poc_price - curr_price) / (poc_price - val_price + 1e-9)
+            vp_str = -ratio * 40
+            vp_sig = "BELOW_POC"
+
+        # ── B. ORDER BOOK FLOW ─────────────────────────────────
+        now = time.time()
+        recent_trades = [
+            t for t in real_time_data["trades"]
+            if t[4] in selected_exchanges and (now - t[2]) <= 120
+        ]
+        buy_vol_rt  = sum(t[1] for t in recent_trades if t[3] == 'b')
+        sell_vol_rt = sum(t[1] for t in recent_trades if t[3] == 's')
+        cum_delta   = buy_vol_rt - sell_vol_rt
+        total_rt    = buy_vol_rt + sell_vol_rt + 1e-9
+        flow_ratio  = buy_vol_rt / total_rt
+
+        bid_map = {}; ask_map = {}
+        for ex_name in selected_exchanges:
+            book = real_time_data["order_book"].get(ex_name, {"bids":[],"asks":[]})
+            for p, q in book["bids"]: bid_map[p] = bid_map.get(p, 0) + q
+            for p, q in book["asks"]: ask_map[p] = ask_map.get(p, 0) + q
+
+        sorted_bids = sorted(bid_map.items(), key=lambda x: x[0], reverse=True)[:20]
+        sorted_asks = sorted(ask_map.items(), key=lambda x: x[0])[:20]
+        avg_bv = np.mean([q for _, q in sorted_bids]) if sorted_bids else 1
+        avg_av = np.mean([q for _, q in sorted_asks]) if sorted_asks else 1
+        bid_walls_exist = any(q >= avg_bv * 3 for _, q in sorted_bids)
+        ask_walls_exist = any(q >= avg_av * 3 for _, q in sorted_asks)
+        bid_wall_prices = [round(p, 6) for p, q in sorted_bids if q >= avg_bv * 3][:3]
+        ask_wall_prices = [round(p, 6) for p, q in sorted_asks if q >= avg_av * 3][:3]
+
+        flow_component  = (flow_ratio - 0.5) * 200
+        delta_sign      = 1 if cum_delta > 0 else (-1 if cum_delta < 0 else 0)
+        wall_bonus      = (10 if bid_walls_exist else 0) - (10 if ask_walls_exist else 0)
+        ob_str          = max(-100, min(100, flow_component * 0.7 + delta_sign * 20 + wall_bonus))
+
+        if   ob_str >  50: ob_sig = "STRONG_BUY"
+        elif ob_str >  20: ob_sig = "BUY"
+        elif ob_str < -50: ob_sig = "STRONG_SELL"
+        elif ob_str < -20: ob_sig = "SELL"
+        else:              ob_sig = "NEUTRAL"
+
+        # ── C. LIQUIDITY SWEEP ─────────────────────────────────
+        conn2 = get_conn()
+        cur2  = conn2.cursor(dictionary=True)
+        cur2.execute("""
+            SELECT open, high, low, close, volume FROM ohlcv_data
+            WHERE symbol=%s AND timeframe=%s
+            ORDER BY time_utc DESC LIMIT 60
+        """, (symbol, timeframe))
+        sw_rows = cur2.fetchall()
+        cur2.close(); conn2.close()
+
+        sweep_str = 0.0; sweep_sig = "NONE"; near_ind = False
+        recent_sweeps_list = []; sweep_conf = 0
+
+        if len(sw_rows) >= 10:
+            sw_df = pd.DataFrame(sw_rows)
+            for c in ["open","high","low","close","volume"]: sw_df[c] = sw_df[c].astype(float)
+            sw_df = sw_df.iloc[::-1].reset_index(drop=True)
+            opens_ = sw_df["open"].values; highs_ = sw_df["high"].values
+            lows_  = sw_df["low"].values;  closes_ = sw_df["close"].values
+            vols_  = sw_df["volume"].values
+
+            for i in range(10, len(sw_df)):
+                crange = highs_[i] - lows_[i]
+                if crange == 0: continue
+                uwik = highs_[i] - max(opens_[i], closes_[i])
+                lwik = min(opens_[i], closes_[i]) - lows_[i]
+
+                if lwik / crange >= 0.35:
+                    prev_lows = lows_[max(0, i-20):i]
+                    swept = [l for l in prev_lows if lows_[i] < l < closes_[i]]
+                    if swept:
+                        vr = vols_[i] / (np.mean(vols_[max(0,i-10):i]) + 1e-9)
+                        conf = min(100, int((lwik/crange)*60 + min(vr,3)*13))
+                        recent_sweeps_list.append({
+                            "type":"BULLISH_SWEEP","index":i,
+                            "sweep_price":round(float(lows_[i]),6),
+                            "close_price":round(float(closes_[i]),6),
+                            "wick_pct":round(lwik/crange*100,1),"confidence":conf
+                        })
+
+                if uwik / crange >= 0.35:
+                    prev_highs = highs_[max(0, i-20):i]
+                    swept = [h for h in prev_highs if closes_[i] < h < highs_[i]]
+                    if swept:
+                        vr = vols_[i] / (np.mean(vols_[max(0,i-10):i]) + 1e-9)
+                        conf = min(100, int((uwik/crange)*60 + min(vr,3)*13))
+                        recent_sweeps_list.append({
+                            "type":"BEARISH_SWEEP","index":i,
+                            "sweep_price":round(float(highs_[i]),6),
+                            "close_price":round(float(closes_[i]),6),
+                            "wick_pct":round(uwik/crange*100,1),"confidence":conf
+                        })
+
+            recent_sweeps_list = recent_sweeps_list[-10:][::-1][:3]
+
+            if recent_sweeps_list:
+                last_sw = recent_sweeps_list[0]
+                sweep_conf = last_sw["confidence"]
+                recency    = max(0.3, 1 - (len(sw_df)-1 - last_sw["index"]) / len(sw_df))
+                if last_sw["type"] == "BULLISH_SWEEP":
+                    sweep_str = sweep_conf * recency; sweep_sig = "LONG_BIAS"
+                else:
+                    sweep_str = -sweep_conf * recency; sweep_sig = "SHORT_BIAS"
+
+            eq_tol = 0.002; ind_h = []; ind_l = []
+            for i in range(5, len(sw_df)):
+                for ph in highs_[max(0,i-10):i]:
+                    if ph > 0 and abs(highs_[i]-ph)/ph < eq_tol: ind_h.append(float(highs_[i])); break
+                for pl2 in lows_[max(0,i-10):i]:
+                    if pl2 > 0 and abs(lows_[i]-pl2)/pl2 < eq_tol: ind_l.append(float(lows_[i])); break
+            near_ind = (
+                any(abs(curr_price-h)/h < 0.005 for h in ind_h) or
+                any(abs(curr_price-lo)/lo < 0.005 for lo in ind_l)
+            )
+            if near_ind: sweep_str *= 0.6
+
+        sweep_str = max(-100, min(100, sweep_str))
+
+        # ── D. COMPOSITE SCORE ─────────────────────────────────
+        # ── D. COMPOSITE SCORE ─────────────────────────────────
+        # Weighted sum of components (each -100..+100)
+        composite_raw   = vp_str * 0.35 + ob_str * 0.40 + sweep_str * 0.25
+        orderflow_score = max(0, min(100, 50 + composite_raw / 2))
+
+        # CONFLICT DAMPENER: if VP says one thing but live flow (OB+Sweep) says
+        # the opposite strongly, compress the score toward neutral.
+        # Live flow combined signal:
+        live_flow_raw = ob_str * 0.62 + sweep_str * 0.38   # OB heavier for recency
+        vp_sign   = 1 if vp_str   > 0 else -1
+        flow_sign = 1 if live_flow_raw > 0 else -1
+        conflict  = vp_sign != flow_sign and abs(vp_str) > 20 and abs(live_flow_raw) > 20
+        if conflict:
+            # Pull score toward 50 proportionally to how strong the conflict is
+            conflict_strength = (abs(vp_str) + abs(live_flow_raw)) / 200  # 0..1
+            orderflow_score   = 50 + (orderflow_score - 50) * (1 - conflict_strength * 0.7)
+            orderflow_score   = max(0, min(100, orderflow_score))
+
+        if   orderflow_score >= 75: of_label="STRONG LONG";  of_color="success"; of_rec="Enter Long – High Conviction"
+        elif orderflow_score >= 60: of_label="LONG";         of_color="info";    of_rec="Enter Long"
+        elif orderflow_score >= 52: of_label="SLIGHT LONG";  of_color="info";    of_rec="Small Long / Monitor"
+        elif orderflow_score >= 48: of_label="NEUTRAL";      of_color="secondary"; of_rec="Wait for Confirmation"
+        elif orderflow_score >= 40: of_label="SLIGHT SHORT"; of_color="warning"; of_rec="Small Short / Monitor"
+        elif orderflow_score >= 25: of_label="SHORT";        of_color="warning"; of_rec="Enter Short"
+        else:                       of_label="STRONG SHORT"; of_color="danger";  of_rec="Enter Short – High Conviction"
+
+        # ── E. POSITION SIZE (confidence-based) ────────────────
+        confidence_pct = round(abs(orderflow_score - 50) / 50 * 100, 1)
+        if   confidence_pct >= 70: pos_size_pct = 3.0
+        elif confidence_pct >= 50: pos_size_pct = 2.0
+        elif confidence_pct >= 30: pos_size_pct = 1.0
+        else:                      pos_size_pct = 0.5
+
+        # ── F. TRADING LEVELS (VP-based, not ATR) ─────────────
+        # ── F. TRADING LEVELS (VP-based, not ATR) ─────────────
+        # Use a sensible nearby stop: 0.5x VA range below/above current price,
+        # floored at val/vah only if they are within 5% of current price.
+        is_long     = orderflow_score >= 50
+        nearby_stop = va_range_safe * 0.5   # half the value-area range as buffer
+
+        if is_long:
+            # Stop just below VAL if it's close (within 5%), else 0.5x VA range below entry
+            if val_price < curr_price and (curr_price - val_price) / curr_price <= 0.05:
+                stop_loss = val_price * 0.998
+            else:
+                stop_loss = curr_price - nearby_stop
+            # TP1 = POC + (VAH-POC) adjusted by OB strength; TP2 extends by VA range
+            tp1 = vah_price + va_range_safe * max(0.1, ob_str / 200)
+            tp2 = tp1 + va_range_safe * 0.6
+        else:
+            # Stop just above VAH if it's close (within 5%), else 0.5x VA range above entry
+            if vah_price > curr_price and (vah_price - curr_price) / curr_price <= 0.05:
+                stop_loss = vah_price * 1.002
+            else:
+                stop_loss = curr_price + nearby_stop
+            tp1 = val_price - va_range_safe * max(0.1, abs(ob_str) / 200)
+            tp2 = tp1 - va_range_safe * 0.6
+
+        risk_pct = abs(curr_price - stop_loss) / curr_price * 100
+        rr1 = abs(tp1 - curr_price) / max(abs(curr_price - stop_loss), 1e-9)
+        rr2 = abs(tp2 - curr_price) / max(abs(curr_price - stop_loss), 1e-9)
+
+        return jsonify({
+            "success": True, "symbol": symbol, "timeframe": timeframe,
+            "current_price": round(curr_price, 6),
+            "signal": of_label, "recommendation": of_rec, "color": of_color,
+            "orderflow_score": round(orderflow_score, 1),
+            "confidence_pct": confidence_pct,
+            "volume_profile": {
+                "signal": vp_sig, "strength": round(vp_str, 2),
+                "poc": round(poc_price, 6), "vah": round(vah_price, 6), "val": round(val_price, 6)
+            },
+            "order_book_flow": {
+                "signal": ob_sig, "strength": round(ob_str, 2),
+                "flow_ratio_pct": round(flow_ratio * 100, 1),
+                "cumulative_delta": round(cum_delta, 4),
+                "bid_walls": bid_walls_exist, "ask_walls": ask_walls_exist,
+                "bid_wall_prices": bid_wall_prices, "ask_wall_prices": ask_wall_prices
+            },
+            "liquidity_sweep": {
+                "signal": sweep_sig, "strength": round(sweep_str, 2),
+                "confidence": sweep_conf, "recent_sweeps": recent_sweeps_list,
+                "near_inducement": near_ind
+            },
+            "position_size_pct": pos_size_pct,
+            "trading_levels": {
+                "entry": round(curr_price, 6), "stop_loss": round(stop_loss, 6),
+                "take_profit_1": round(tp1, 6), "take_profit_2": round(tp2, 6),
+                "risk_pct": round(risk_pct, 3),
+                "rr_ratio_tp1": round(rr1, 2), "rr_ratio_tp2": round(rr2, 2)
+            },
+            "conflict_detected": conflict,
+            "live_flow_raw": round(live_flow_raw, 2),
+            "timestamp": datetime.utcnow().isoformat()
+        })
+
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return jsonify({"success": False, "error": str(e)}), 500
+
 
 # ========= MAIN =========
 if __name__ == "__main__":

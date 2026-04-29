@@ -46,6 +46,7 @@
     <ul class="nav nav-tabs mb-4" id="mainTabs">
         <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#ohlcv">OHLCV</a></li>
         <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#signals">Signals</a></li>
+        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#pureOrderflow">⚡ Pure Orderflow</a></li>
         <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#gainers">Gainers</a></li>
         <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#losers">Losers</a></li>
         
@@ -54,7 +55,8 @@
         <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#realtimeAnalysis">Real-Time Analysis</a></li>
         <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#predictions">Predictions</a></li>
               
-        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#patternScanner">Pattern & Volume Scan</a></li>        
+        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#patternScanner">Pattern & Volume Scan</a></li>                         
+        
     </ul>
 
     <div class="tab-content">
@@ -331,6 +333,226 @@
 
 </div><!-- /tab-pane signals -->
 
+<!-- New tab  -->
+ <!-- ═══════════════════════ PURE ORDERFLOW TAB ════════════════════════ -->
+<div class="tab-pane fade" id="pureOrderflow">
+<style>
+.pof-card{background:#1a1f2e;border:1px solid #2d3748;border-radius:12px;padding:20px}
+.pof-hdr{font-size:.72rem;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:#718096;margin-bottom:4px}
+.pof-panel{background:#141824;border:1px solid #2d3748;border-radius:10px;padding:16px;height:100%}
+.pof-panel-title{display:flex;align-items:center;gap:8px;font-weight:700;color:#e2e8f0;margin-bottom:12px;font-size:.9rem;border-bottom:1px solid #2d3748;padding-bottom:8px}
+.pof-badge-bull{background:#1a4731;color:#48bb78;font-size:.68rem;padding:2px 8px;border-radius:20px;font-weight:700}
+.pof-badge-bear{background:#4a1c1c;color:#fc8181;font-size:.68rem;padding:2px 8px;border-radius:20px;font-weight:700}
+.pof-badge-neu{background:#2d3748;color:#a0aec0;font-size:.68rem;padding:2px 8px;border-radius:20px;font-weight:700}
+.pof-row{display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid #2d3748;font-size:.82rem}
+.pof-row:last-child{border-bottom:none}
+.pof-rk{color:#a0aec0}.pof-rv{color:#e2e8f0;font-weight:600}
+.pof-score-track{background:#0d1117;border-radius:60px;height:14px;overflow:hidden;margin:8px 0}
+.pof-score-fill{height:100%;border-radius:60px;transition:width .5s ease,background .3s}
+.pof-big{font-size:2.8rem;font-weight:900;line-height:1}
+.pof-sig-badge{font-size:1rem;font-weight:800;padding:8px 20px;border-radius:8px;text-transform:uppercase;letter-spacing:.08em;display:inline-block}
+.pof-level{background:#0d1117;border-radius:8px;padding:12px 14px;text-align:center}
+.pof-level-val{font-size:1rem;font-weight:700;margin-top:4px}
+.pof-stop{border-top:3px solid #fc8181}.pof-tp{border-top:3px solid #48bb78}.pof-entry{border-top:3px solid #f6e05e}
+.pof-pos{background:#1a1f2e;border:2px solid #4299e1;border-radius:10px;padding:14px 20px;text-align:center}
+.pof-bar-row{display:flex;align-items:center;gap:10px;margin-bottom:8px;font-size:.8rem}
+.pof-bar-track{flex:1;background:#0d1117;border-radius:20px;height:8px;overflow:hidden}
+.pof-bar-fill{height:100%;border-radius:20px;transition:width .5s ease}
+.pof-sweep-item{background:#0d1117;border-radius:6px;padding:8px 10px;margin-bottom:6px;font-size:.78rem}
+.pof-btn{background:linear-gradient(135deg,#6c63ff,#4299e1);border:none;color:#fff;font-weight:700;padding:9px 22px;border-radius:8px}
+.pof-btn:hover{opacity:.85;color:#fff}
+.pof-input{background:#1a1f2e!important;border:1px solid #2d3748!important;color:#e2e8f0!important}
+.pof-empty{color:#4a5568;font-style:italic;font-size:.83rem;text-align:center;padding:12px 0}
+.pof-section{font-size:.75rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#4299e1;margin-bottom:10px}
+.pof-tag-b{background:#1a4731;color:#48bb78;border-radius:4px;padding:1px 6px;font-size:.72rem;font-weight:700}
+.pof-tag-s{background:#4a1c1c;color:#fc8181;border-radius:4px;padding:1px 6px;font-size:.72rem;font-weight:700}
+</style>
+
+<!-- Controls -->
+<div class="d-flex align-items-center gap-3 mb-4 flex-wrap">
+  <div style="flex:1;min-width:160px">
+    <label class="form-label pof-hdr">Symbol</label>
+    <input id="pofSymbol" class="form-control pof-input" value="BTC/USDT">
+  </div>
+  <div style="min-width:120px">
+    <label class="form-label pof-hdr">Timeframe</label>
+    <select id="pofTimeframe" class="form-select pof-input">
+      <option value="15m">15m</option><option value="1h">1h</option>
+      <option value="4h" selected>4h</option><option value="1d">1d</option>
+    </select>
+  </div>
+  <div style="min-width:120px">
+    <label class="form-label pof-hdr">Candles</label>
+    <select id="pofLimit" class="form-select pof-input">
+      <option value="100">100</option><option value="200" selected>200</option><option value="300">300</option>
+    </select>
+  </div>
+  <div class="d-flex gap-2 align-items-end" style="padding-top:24px">
+    <button class="btn pof-btn" onclick="runPureOrderflow()" id="pofRunBtn">
+      <span class="spinner-border spinner-border-sm d-none me-1" id="pofSpinner"></span>
+      ⚡ Analyze Orderflow
+    </button>
+  </div>
+</div>
+
+<div id="pofAlert"></div>
+
+<!-- Main result card -->
+<div id="pofMainCard" class="pof-card mb-4" style="display:none">
+  <div class="row g-0 align-items-stretch">
+    <!-- Left: Signal + Score -->
+    <div class="col-md-3 d-flex flex-column align-items-center justify-content-center p-4 text-center" style="border-right:1px solid #2d3748">
+      <div class="pof-hdr mb-2">Orderflow Signal</div>
+      <div id="pofSignalBadge" class="pof-sig-badge mb-3" style="background:#1a4731;color:#48bb78">—</div>
+      <div class="pof-hdr mb-1">Score</div>
+      <div id="pofBigScore" class="pof-big mb-1" style="color:#48bb78">50</div>
+      <div style="color:#718096;font-size:.8rem">/ 100</div>
+      <div class="pof-score-track w-100 mt-2 mb-3">
+        <div id="pofScoreFill" class="pof-score-fill" style="width:50%;background:#48bb78"></div>
+      </div>
+      <div class="pof-hdr mb-1">Confidence</div>
+      <div id="pofConfidence" style="font-size:1.4rem;font-weight:800;color:#4299e1">—%</div>
+      <div class="mt-3 pof-hdr mb-1">Recommendation</div>
+      <div id="pofRec" style="color:#e2e8f0;font-weight:700;font-size:.9rem">—</div>
+    </div>
+    <!-- Right: Breakdown -->
+    <div class="col-md-9 p-4">
+      <div class="pof-section">Component Breakdown — VP 35% · OB 40% · Sweep 25%</div>
+      <div class="pof-bar-row">
+        <div style="width:120px;color:#a0aec0">📊 Vol Profile</div>
+        <div class="pof-bar-track"><div id="pofVPBar" class="pof-bar-fill" style="width:50%;background:#48bb78"></div></div>
+        <div id="pofVPStrVal" style="width:55px;text-align:right;color:#e2e8f0;font-weight:700">—</div>
+        <div id="pofVPSig" class="pof-badge-neu" style="min-width:115px;text-align:center">—</div>
+      </div>
+      <div class="pof-bar-row">
+        <div style="width:120px;color:#a0aec0">📖 Order Book</div>
+        <div class="pof-bar-track"><div id="pofOBBar" class="pof-bar-fill" style="width:50%;background:#48bb78"></div></div>
+        <div id="pofOBStrVal" style="width:55px;text-align:right;color:#e2e8f0;font-weight:700">—</div>
+        <div id="pofOBSig" class="pof-badge-neu" style="min-width:115px;text-align:center">—</div>
+      </div>
+      <div class="pof-bar-row">
+        <div style="width:120px;color:#a0aec0">💧 Liq Sweep</div>
+        <div class="pof-bar-track"><div id="pofSWBar" class="pof-bar-fill" style="width:50%;background:#48bb78"></div></div>
+        <div id="pofSWStrVal" style="width:55px;text-align:right;color:#e2e8f0;font-weight:700">—</div>
+        <div id="pofSWSig" class="pof-badge-neu" style="min-width:115px;text-align:center">—</div>
+      </div>
+      <hr style="border-color:#2d3748;margin:16px 0">
+      <div class="row g-2">
+        <div class="col-6 col-md-3">
+          <div class="pof-level"><div class="pof-hdr">Price</div><div id="pofPrice" class="pof-level-val" style="color:#f6e05e">—</div></div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="pof-level"><div class="pof-hdr">Flow Ratio</div><div id="pofFlowRatio" class="pof-level-val">—</div><div style="font-size:.72rem;color:#718096">Buy/(Buy+Sell)</div></div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="pof-level"><div class="pof-hdr">Cum Delta</div><div id="pofDelta" class="pof-level-val">—</div></div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="pof-level"><div class="pof-hdr">Near Inducement</div><div id="pofNearInd" class="pof-level-val">—</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Three detail panels -->
+<div class="row g-3 mb-4" id="pofPanelsRow" style="display:none">
+  <!-- VP Panel -->
+  <div class="col-md-4">
+    <div class="pof-panel">
+      <div class="pof-panel-title">📊 Volume Profile <span id="pofVPBadge" class="pof-badge-neu ms-auto">—</span></div>
+      <div class="pof-row"><span class="pof-rk">POC</span><span id="pof_poc" class="pof-rv">—</span></div>
+      <div class="pof-row"><span class="pof-rk">VAH</span><span id="pof_vah" class="pof-rv" style="color:#48bb78">—</span></div>
+      <div class="pof-row"><span class="pof-rk">VAL</span><span id="pof_val" class="pof-rv" style="color:#fc8181">—</span></div>
+      <div class="pof-row"><span class="pof-rk">VP Signal</span><span id="pof_vp_sig" class="pof-rv">—</span></div>
+      <div class="pof-row"><span class="pof-rk">VP Strength</span><span id="pof_vp_str" class="pof-rv">—</span></div>
+      <div class="pof-row"><span class="pof-rk">Weight</span><span class="pof-rv">35%</span></div>
+    </div>
+  </div>
+  <!-- OB Panel -->
+  <div class="col-md-4">
+    <div class="pof-panel">
+      <div class="pof-panel-title">📖 Order Book Flow <span id="pofOBBadge" class="pof-badge-neu ms-auto">—</span></div>
+      <div class="pof-row"><span class="pof-rk">Flow Ratio</span><span id="pof_fr" class="pof-rv">—</span></div>
+      <div class="pof-row"><span class="pof-rk">Cum Delta</span><span id="pof_cd" class="pof-rv">—</span></div>
+      <div class="pof-row"><span class="pof-rk">Bid Walls</span><span id="pof_bw" class="pof-rv">—</span></div>
+      <div class="pof-row"><span class="pof-rk">Ask Walls</span><span id="pof_aw" class="pof-rv">—</span></div>
+      <div class="pof-row"><span class="pof-rk">OB Strength</span><span id="pof_ob_str" class="pof-rv">—</span></div>
+      <div class="pof-row"><span class="pof-rk">Weight</span><span class="pof-rv">40%</span></div>
+    </div>
+  </div>
+  <!-- Sweep Panel -->
+  <div class="col-md-4">
+    <div class="pof-panel">
+      <div class="pof-panel-title">💧 Liquidity Sweep <span id="pofSWBadge" class="pof-badge-neu ms-auto">—</span></div>
+      <div class="pof-row"><span class="pof-rk">Sweep Signal</span><span id="pof_sw_sig" class="pof-rv">—</span></div>
+      <div class="pof-row"><span class="pof-rk">Confidence</span><span id="pof_sw_conf" class="pof-rv">—</span></div>
+      <div class="pof-row"><span class="pof-rk">Sweep Strength</span><span id="pof_sw_str" class="pof-rv">—</span></div>
+      <div class="pof-row"><span class="pof-rk">Near Inducement</span><span id="pof_sw_ind" class="pof-rv">—</span></div>
+      <div class="pof-row"><span class="pof-rk">Weight</span><span class="pof-rv">25%</span></div>
+      <div class="pof-section mt-3">Recent Sweeps</div>
+      <div id="pofSweepList"><div class="pof-empty">No sweeps detected</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- Trading Levels -->
+<div id="pofLevelsCard" class="pof-card mb-4" style="display:none">
+  <div class="pof-section mb-3">🎯 Trading Levels (VP-Based — No ATR)</div>
+  <div class="row g-3">
+    <div class="col-6 col-md-3">
+      <div class="pof-level pof-stop">
+        <div class="pof-hdr">Stop Loss</div>
+        <div id="pofLvSL" class="pof-level-val" style="color:#fc8181">—</div>
+        <div id="pofLvRisk" style="font-size:.72rem;color:#718096">— risk</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="pof-level pof-entry">
+        <div class="pof-hdr">Entry (Current)</div>
+        <div id="pofLvEntry" class="pof-level-val" style="color:#f6e05e">—</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="pof-level pof-tp">
+        <div class="pof-hdr">Take Profit 1</div>
+        <div id="pofLvTP1" class="pof-level-val" style="color:#48bb78">—</div>
+        <div id="pofLvRR1" style="font-size:.72rem;color:#718096">R:R —</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="pof-level pof-tp">
+        <div class="pof-hdr">Take Profit 2</div>
+        <div id="pofLvTP2" class="pof-level-val" style="color:#48bb78">—</div>
+        <div id="pofLvRR2" style="font-size:.72rem;color:#718096">R:R —</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Position Size -->
+<div id="pofPositionCard" class="pof-card" style="display:none">
+  <div class="pof-section mb-3">💰 Position Size (Confidence-Based — No ATR)</div>
+  <div class="row g-3 align-items-center">
+    <div class="col-md-4">
+      <div class="pof-pos">
+        <div class="pof-hdr mb-1">Recommended Size</div>
+        <div id="pofPosSize" style="font-size:2.2rem;font-weight:900;color:#4299e1">—%</div>
+        <div style="font-size:.72rem;color:#718096">of portfolio</div>
+      </div>
+    </div>
+    <div class="col-md-8" style="font-size:.82rem;color:#718096;line-height:1.9">
+      <div><span style="color:#48bb78;font-weight:700">Confidence ≥ 70%</span> → 3.0% (STRONG signal)</div>
+      <div><span style="color:#68d391;font-weight:700">Confidence ≥ 50%</span> → 2.0% (Clear signal)</div>
+      <div><span style="color:#f6e05e;font-weight:700">Confidence ≥ 30%</span> → 1.0% (Moderate signal)</div>
+      <div><span style="color:#a0aec0;font-weight:700">Confidence &lt; 30%</span> → 0.5% (Skip or wait)</div>
+      <div style="margin-top:6px;color:#4a5568;font-style:italic">Confidence = |Score − 50| / 50 × 100</div>
+    </div>
+  </div>
+</div>
+
+</div><!-- /tab-pane pureOrderflow -->
+<!-- End -->
 
         <!-- GAINERS -->
         <div class="tab-pane fade" id="gainers">
@@ -1343,6 +1565,7 @@
             </div>
         </div>
         <!-- End -->
+        
         
         <!-- Sector Rotation (keep as in your original) -->
         <!-- ... -->
@@ -4609,8 +4832,16 @@ function renderOBFlowPanel(obf) {
   const sellV = obf.sell_volume || 0;
   const total = buyV + sellV + 1e-9;
   const buyPct  = (buyV/total*100).toFixed(1);
-  const sellPct = (100-buyPct).toFixed(1);
+  const sellPct = (100 - parseFloat(buyPct)).toFixed(1);
   const delta   = obf.cumulative_delta || 0;
+
+  // bid_walls/ask_walls can be boolean (from enhanced_signal_v2)
+  // OR arrays (from standalone /order_book_flow). Normalise both.
+  const bidWallBool = Array.isArray(obf.bid_walls) ? obf.bid_walls.length > 0 : !!obf.bid_walls;
+  const askWallBool = Array.isArray(obf.ask_walls) ? obf.ask_walls.length > 0 : !!obf.ask_walls;
+  const bidWallArr  = Array.isArray(obf.bid_walls) ? obf.bid_walls : [];
+  const askWallArr  = Array.isArray(obf.ask_walls) ? obf.ask_walls : [];
+  const absorpArr   = Array.isArray(obf.absorptions) ? obf.absorptions : [];
 
   document.getElementById("obfBody").innerHTML = `
     <div class="sig2-row">
@@ -4631,31 +4862,31 @@ function renderOBFlowPanel(obf) {
     </div>
     <div class="sig2-row">
       <span class="sig2-row-key">Flow Ratio</span>
-      <span class="sig2-row-val">${(obf.flow_ratio*100||0).toFixed(1)}% buy</span>
+      <span class="sig2-row-val">${((obf.flow_ratio||0)*100).toFixed(1)}% buy</span>
     </div>
     <div class="sig2-row">
       <span class="sig2-row-key">Bid Walls</span>
-      <span class="sig2-row-val ${obf.bid_walls?'bull':'sig2-row-val'}">${obf.bid_walls?"✔ Present":"None"}</span>
+      <span class="sig2-row-val ${bidWallBool?'bull':''}">${bidWallBool?"✔ Present":"None"}</span>
     </div>
     <div class="sig2-row">
       <span class="sig2-row-key">Ask Walls</span>
-      <span class="sig2-row-val ${obf.ask_walls?'bear':'sig2-row-val'}">${obf.ask_walls?"✔ Present":"None"}</span>
+      <span class="sig2-row-val ${askWallBool?'bear':''}">${askWallBool?"✔ Present":"None"}</span>
     </div>
-    ${(obf.absorptions||[]).slice(0,2).map(a=>
+    ${absorpArr.slice(0,2).map(a=>
       `<div class="sig2-row">
         <span class="sig2-row-key">${a.type||"Absorption"}</span>
         <span class="sig2-row-val ${a.signal==='BULLISH'?'bull':'bear'}">${sig2FormatPrice(a.price)} ${a.signal}</span>
       </div>`
     ).join("")}
-    ${(obf.bid_walls||[]).slice(0,2).map(w=>
+    ${bidWallArr.slice(0,2).map(w=>
       `<div class="sig2-row">
-        <span class="sig2-row-key">Bid Wall</span>
+        <span class="sig2-row-key">Bid Wall @</span>
         <span class="sig2-row-val warn">${sig2FormatPrice(w.price)} (${w.strength}x)</span>
       </div>`
     ).join("")}
-    ${(obf.ask_walls||[]).slice(0,2).map(w=>
+    ${askWallArr.slice(0,2).map(w=>
       `<div class="sig2-row">
-        <span class="sig2-row-key">Ask Wall</span>
+        <span class="sig2-row-key">Ask Wall @</span>
         <span class="sig2-row-val warn">${sig2FormatPrice(w.price)} (${w.strength}x)</span>
       </div>`
     ).join("")}
@@ -4691,9 +4922,16 @@ function renderSweepPanel(ls) {
   badge.textContent = srisk;
   badge.style.cssText = sig2PanelBadgeStyle(srisk);
 
-  const sweeps = (ls.sweeps||[]).slice(0,4);
-  const sweepHTML = sweeps.length ? sweeps.map(s=>{
-    const isBull = s.type==="BULLISH_SWEEP";
+  // All array fields are optional — enhanced_signal_v2 returns only
+  // signal / recent_sweep / near_inducement (compact object).
+  // The full /liquidity_sweep endpoint returns the complete arrays.
+  const sweepsArr   = Array.isArray(ls.sweeps)           ? ls.sweeps           : [];
+  const indHighsArr = Array.isArray(ls.inducement_highs) ? ls.inducement_highs : [];
+  const indLowsArr  = Array.isArray(ls.inducement_lows)  ? ls.inducement_lows  : [];
+
+  const sweeps = sweepsArr.slice(0, 4);
+  const sweepHTML = sweeps.length ? sweeps.map(s => {
+    const isBull = s.type === "BULLISH_SWEEP";
     return `<div class="sig2-sweep ${isBull?'sig2-sweep-bull':'sig2-sweep-bear'}">
       <div class="sig2-sweep-icon">${isBull?"🟢":"🔴"}</div>
       <div class="sig2-sweep-info">
@@ -4702,16 +4940,24 @@ function renderSweepPanel(ls) {
         <div class="sig2-sweep-desc">${s.description||""}</div>
       </div>
     </div>`;
-  }).join("") : `<p class="sig2-empty-msg">No recent sweeps detected</p>`;
+  }).join("") : "";
+
+  // Show "last sweep" row from compact object if arrays not present
+  const recentSweepRow = (ls.recent_sweep && ls.recent_sweep !== "NONE")
+    ? `<div class="sig2-row">
+         <span class="sig2-row-key">Last Sweep</span>
+         <span class="sig2-row-val ${ls.recent_sweep.includes('BULL')?'bull':'bear'}">${ls.recent_sweep}</span>
+       </div>` : "";
 
   document.getElementById("lsBody").innerHTML = `
     <div class="sig2-row">
       <span class="sig2-row-key">Sweep Risk</span>
       <span class="sig2-row-val warn">${ls.sweep_risk||"NONE"}</span>
     </div>
+    ${recentSweepRow}
     <div class="sig2-row">
       <span class="sig2-row-key">Near Inducement</span>
-      <span class="sig2-row-val ${ls.near_inducement?'warn':'sig2-row-val'}">${ls.near_inducement?"⚠ YES":"No"}</span>
+      <span class="sig2-row-val ${ls.near_inducement?'warn':''}">${ls.near_inducement?"⚠ YES":"No"}</span>
     </div>
     <div class="sig2-row">
       <span class="sig2-row-key">Bullish Sweeps</span>
@@ -4721,17 +4967,17 @@ function renderSweepPanel(ls) {
       <span class="sig2-row-key">Bearish Sweeps</span>
       <span class="sig2-row-val bear">${ls.bearish_sweeps||0}</span>
     </div>
-    ${(ls.inducement_highs||[]).slice(0,2).map(h=>
+    ${indHighsArr.slice(0,2).map(h=>
       `<div class="sig2-row">
         <span class="sig2-row-key">Ind. High</span>
         <span class="sig2-row-val bear">${sig2FormatPrice(h)}</span>
       </div>`).join("")}
-    ${(ls.inducement_lows||[]).slice(0,2).map(l=>
+    ${indLowsArr.slice(0,2).map(l=>
       `<div class="sig2-row">
         <span class="sig2-row-key">Ind. Low</span>
         <span class="sig2-row-val bull">${sig2FormatPrice(l)}</span>
       </div>`).join("")}
-    <div class="mt-2"><div class="sig2-label mb-1">Recent Sweeps</div>${sweepHTML}</div>
+    ${sweeps.length ? `<div class="mt-2"><div class="sig2-label mb-1">Recent Sweeps</div>${sweepHTML}</div>` : ""}
   `;
 }
 
@@ -5167,6 +5413,175 @@ document.querySelector('#mainTabs a[href="#signals"]')?.addEventListener('shown.
 });
 // end
 
+
+// ══════════════════════════════════════════════════════
+// PURE ORDERFLOW – JS
+// ══════════════════════════════════════════════════════
+function pofAlert(msg,type='danger'){
+  document.getElementById('pofAlert').innerHTML=
+    `<div class="alert alert-${type} alert-dismissible py-2">
+      ${msg}<button type="button" class="btn-close btn-close-white" data-bs-dismiss="alert"></button>
+    </div>`;
+}
+function pofFmt(v,dp=2){
+  if(v===undefined||v===null)return'—';
+  return Number(v).toLocaleString(undefined,{minimumFractionDigits:dp,maximumFractionDigits:dp});
+}
+function pofStrColor(s){ return s>30?'#48bb78':s<-30?'#fc8181':'#f6e05e'; }
+function pofBadgeCls(sig){
+  const s=(sig||'').toLowerCase();
+  if(s.includes('buy')||s.includes('long')||s.includes('bull')||s.includes('above')||s.includes('breakout')) return 'pof-badge-bull';
+  if(s.includes('sell')||s.includes('short')||s.includes('bear')||s.includes('below')||s.includes('breakdown')) return 'pof-badge-bear';
+  return 'pof-badge-neu';
+}
+function pofSigColors(label){
+  const l=(label||'').toLowerCase();
+  if(l.includes('strong long'))  return{bg:'#1a4731',col:'#68d391'};
+  if(l.includes('slight long'))  return{bg:'#1c3a2a',col:'#9ae6b4'};
+  if(l.includes('long'))         return{bg:'#1a4731',col:'#48bb78'};
+  if(l.includes('strong short')) return{bg:'#4a1c1c',col:'#fc8181'};
+  if(l.includes('slight short')) return{bg:'#3d2a1c',col:'#fbd38d'};
+  if(l.includes('short'))        return{bg:'#3d1c1c',col:'#feb2b2'};
+  return{bg:'#2d3748',col:'#a0aec0'};
+}
+
+async function runPureOrderflow(){
+  const symbol    = (document.getElementById('pofSymbol').value||'BTC/USDT').trim().toUpperCase();
+  const timeframe = document.getElementById('pofTimeframe').value;
+  const limit     = parseInt(document.getElementById('pofLimit').value);
+
+  document.getElementById('pofAlert').innerHTML='';
+  document.getElementById('pofSpinner').classList.remove('d-none');
+  document.getElementById('pofRunBtn').disabled=true;
+  ['pofMainCard','pofPanelsRow','pofLevelsCard','pofPositionCard'].forEach(id=>document.getElementById(id).style.display='none');
+
+  try{
+    const res = await fetch(API+'/pure_orderflow_signal',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({symbol,timeframe,limit})
+    });
+    const d = await res.json();
+    if(!d.success){ pofAlert(d.error||'Request failed'); return; }
+
+    // ── Signal badge + score ─────────────────────────────
+    const sc=d.orderflow_score;
+    const sc2=pofSigColors(d.signal);
+    const badge=document.getElementById('pofSignalBadge');
+    badge.textContent=d.signal; badge.style.background=sc2.bg; badge.style.color=sc2.col;
+    document.getElementById('pofBigScore').textContent=sc.toFixed(1);
+    document.getElementById('pofBigScore').style.color=sc>=60?'#48bb78':sc<=40?'#fc8181':'#f6e05e';
+    document.getElementById('pofScoreFill').style.width=sc+'%';
+    document.getElementById('pofScoreFill').style.background=sc>=60?'#48bb78':sc<=40?'#fc8181':'#f6e05e';
+    document.getElementById('pofConfidence').textContent=d.confidence_pct+'%';
+    document.getElementById('pofRec').textContent=d.recommendation;
+    document.getElementById('pofPrice').textContent='$'+pofFmt(d.current_price,4);
+
+    const ob=d.order_book_flow; const sw=d.liquidity_sweep; const vp=d.volume_profile;
+
+    // flow ratio + delta
+    document.getElementById('pofFlowRatio').textContent=(ob.flow_ratio_pct||0).toFixed(1)+'%';
+    document.getElementById('pofFlowRatio').style.color=ob.flow_ratio_pct>55?'#48bb78':ob.flow_ratio_pct<45?'#fc8181':'#f6e05e';
+    document.getElementById('pofDelta').textContent=pofFmt(ob.cumulative_delta,2);
+    document.getElementById('pofDelta').style.color=ob.cumulative_delta>0?'#48bb78':'#fc8181';
+    document.getElementById('pofNearInd').textContent=sw.near_inducement?'⚠ YES':'✓ No';
+    document.getElementById('pofNearInd').style.color=sw.near_inducement?'#f6ad55':'#48bb78';
+
+    // ── Component bars ───────────────────────────────────
+    function setBar(barId,strValId,sigId,strength,sig){
+      const w=Math.round(50+strength/2); // −100→0%, 0→50%, +100→100%
+      document.getElementById(barId).style.width=Math.max(2,Math.min(100,w))+'%';
+      document.getElementById(barId).style.background=pofStrColor(strength);
+      document.getElementById(strValId).textContent=(strength>0?'+':'')+strength.toFixed(1);
+      document.getElementById(strValId).style.color=pofStrColor(strength);
+      const el=document.getElementById(sigId);
+      el.textContent=sig; el.className=pofBadgeCls(sig);
+    }
+    setBar('pofVPBar','pofVPStrVal','pofVPSig',vp.strength,vp.signal);
+    setBar('pofOBBar','pofOBStrVal','pofOBSig',ob.strength,ob.signal);
+    setBar('pofSWBar','pofSWStrVal','pofSWSig',sw.strength,sw.signal);
+
+    // Conflict warning banner
+    if(d.conflict_detected){
+      pofAlert(`⚠️ <strong>Signal Conflict:</strong> Volume Profile is <strong>${vp.signal}</strong> but live Order Book + Sweep flow is <strong>${ob.signal} / ${sw.signal}</strong>. Score dampened toward neutral. Wait for confirmation or reduce position size.`, 'warning');
+    }
+    document.getElementById('pofMainCard').style.display='';
+
+    // ── VP panel ─────────────────────────────────────────
+    const vpb=document.getElementById('pofVPBadge');
+    vpb.textContent=vp.signal; vpb.className=pofBadgeCls(vp.signal)+' ms-auto';
+    document.getElementById('pof_poc').textContent='$'+pofFmt(vp.poc,4);
+    document.getElementById('pof_vah').textContent='$'+pofFmt(vp.vah,4);
+    document.getElementById('pof_val').textContent='$'+pofFmt(vp.val,4);
+    document.getElementById('pof_vp_sig').textContent=vp.signal;
+    document.getElementById('pof_vp_str').textContent=(vp.strength>0?'+':'')+vp.strength.toFixed(2);
+    document.getElementById('pof_vp_str').style.color=pofStrColor(vp.strength);
+
+    // ── OB panel ─────────────────────────────────────────
+    const obb=document.getElementById('pofOBBadge');
+    obb.textContent=ob.signal; obb.className=pofBadgeCls(ob.signal)+' ms-auto';
+    document.getElementById('pof_fr').textContent=(ob.flow_ratio_pct||0).toFixed(1)+'% buying';
+    document.getElementById('pof_cd').textContent=pofFmt(ob.cumulative_delta,4);
+    document.getElementById('pof_cd').style.color=ob.cumulative_delta>0?'#48bb78':'#fc8181';
+    document.getElementById('pof_bw').innerHTML=ob.bid_walls
+      ?`<span class="pof-tag-b">✓ YES</span> ${(ob.bid_wall_prices||[]).slice(0,2).map(p=>'$'+pofFmt(p,4)).join(', ')}`
+      :'<span style="color:#4a5568">✗ None</span>';
+    document.getElementById('pof_aw').innerHTML=ob.ask_walls
+      ?`<span class="pof-tag-s">✓ YES</span> ${(ob.ask_wall_prices||[]).slice(0,2).map(p=>'$'+pofFmt(p,4)).join(', ')}`
+      :'<span style="color:#4a5568">✗ None</span>';
+    document.getElementById('pof_ob_str').textContent=(ob.strength>0?'+':'')+ob.strength.toFixed(2);
+    document.getElementById('pof_ob_str').style.color=pofStrColor(ob.strength);
+
+    // ── Sweep panel ──────────────────────────────────────
+    const swb=document.getElementById('pofSWBadge');
+    swb.textContent=sw.signal; swb.className=pofBadgeCls(sw.signal)+' ms-auto';
+    document.getElementById('pof_sw_sig').textContent=sw.signal;
+    document.getElementById('pof_sw_sig').style.color=pofStrColor(sw.strength);
+    document.getElementById('pof_sw_conf').textContent=sw.confidence+'%';
+    document.getElementById('pof_sw_str').textContent=(sw.strength>0?'+':'')+sw.strength.toFixed(2);
+    document.getElementById('pof_sw_str').style.color=pofStrColor(sw.strength);
+    document.getElementById('pof_sw_ind').innerHTML=sw.near_inducement
+      ?'<span style="color:#f6ad55;font-weight:700">⚠ YES</span>'
+      :'<span style="color:#48bb78">✓ No</span>';
+
+    const sweeps=sw.recent_sweeps||[];
+    document.getElementById('pofSweepList').innerHTML=sweeps.length===0
+      ?'<div class="pof-empty">No recent sweeps</div>'
+      :sweeps.map(s=>{
+        const bull=s.type==='BULLISH_SWEEP';
+        return`<div class="pof-sweep-item">
+          <span class="${bull?'pof-tag-b':'pof-tag-s'}">${bull?'▲ BULL':'▼ BEAR'}</span>
+          &nbsp;Sweep <b>$${pofFmt(s.sweep_price,4)}</b>
+          &nbsp;Close <b>$${pofFmt(s.close_price,4)}</b>
+          &nbsp;Wick <b>${s.wick_pct}%</b>
+          &nbsp;Conf <b>${s.confidence}%</b>
+        </div>`;
+      }).join('');
+
+    document.getElementById('pofPanelsRow').style.display='';
+
+    // ── Trading Levels ───────────────────────────────────
+    const lv=d.trading_levels;
+    document.getElementById('pofLvSL').textContent   ='$'+pofFmt(lv.stop_loss,4);
+    document.getElementById('pofLvRisk').textContent =lv.risk_pct.toFixed(2)+'% risk';
+    document.getElementById('pofLvEntry').textContent='$'+pofFmt(lv.entry,4);
+    document.getElementById('pofLvTP1').textContent  ='$'+pofFmt(lv.take_profit_1,4);
+    document.getElementById('pofLvRR1').textContent  ='R:R '+lv.rr_ratio_tp1.toFixed(2);
+    document.getElementById('pofLvTP2').textContent  ='$'+pofFmt(lv.take_profit_2,4);
+    document.getElementById('pofLvRR2').textContent  ='R:R '+lv.rr_ratio_tp2.toFixed(2);
+    document.getElementById('pofLevelsCard').style.display='';
+
+    // ── Position Size ────────────────────────────────────
+    document.getElementById('pofPosSize').textContent=d.position_size_pct.toFixed(1)+'%';
+    document.getElementById('pofPositionCard').style.display='';
+
+  }catch(err){
+    pofAlert('Network error: '+err.message);
+  }finally{
+    document.getElementById('pofSpinner').classList.add('d-none');
+    document.getElementById('pofRunBtn').disabled=false;
+  }
+}
 </script>
 
 </body>

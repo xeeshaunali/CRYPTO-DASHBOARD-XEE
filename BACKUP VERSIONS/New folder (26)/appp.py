@@ -1,0 +1,6119 @@
+# appp.py – SUPER BOT v4 – ENHANCED HISTORICAL OHLCV FETCHING + volume_diff
+# WITH 10 EXCHANGES FOR LIVE ORDER DATA + FUTURES SUPPORT + LIQUIDATIONS + LONG/SHORT RATIO
+from scipy.signal import find_peaks
+from flask import Flask, request, jsonify, send_file
+from flask_cors import CORS
+#import mysql.connector
+import hashlib
+# imported from functions file start
+from functions import check_existing_candles
+from functions import save_ohlcv
+from functions import save_daily_gainers_losers
+from functions import get_existing_symbols
+from functions import save_new_symbols
+from functions import get_exchange
+# imported from functions file End
+import ccxt
+import pandas as pd
+import pandas_ta as ta
+from datetime import datetime, timedelta
+import math
+from db.connection import get_conn
+import time
+import json
+import websocket
+import threading
+from io import BytesIO
+import requests
+import numpy as np
+from typing import Dict, List, Tuple, Optional, Any
+import gzip
+from manipulation_detector import analyze_manipulation
+#from bs4 import BeautifulSoup
+
+app = Flask(__name__)
+CORS(app)
+
+# Global real-time data with 10 exchanges
+real_time_data = {
+    "current_symbol": "BTC/USDT",
+    "market_type": "spot",          # new: spot or future
+    "order_book": {
+        "binance": {"bids": [], "asks": []},
+        "bybit": {"bids": [], "asks": []},
+        "okx": {"bids": [], "asks": []},
+        "gateio": {"bids": [], "asks": []},
+        #"kucoin": {"bids": [], "asks": []},
+        "huobi": {"bids": [], "asks": []},
+        "kraken": {"bids": [], "asks": []},
+        "bitget": {"bids": [], "asks": []},
+        "mexc": {"bids": [], "asks": []},
+        "coinbase": {"bids": [], "asks": []}
+    },
+    "trades": [],
+    "vwap": None,
+    "current_price": 0.0,
+    "last_update": 0,
+    "total_buy_volume": 0.0,
+    "total_sell_volume": 0.0,
+    "order_flow_imbalance": 0.0,
+    "predicted_price": 0.0
+}
+
+# Global WS objects for all exchanges
+binance_ws = None
+bybit_ws = None
+okx_ws = None
+gateio_ws = None
+#kucoin_ws = None
+huobi_ws = None
+kraken_ws = None
+bitget_ws = None
+mexc_ws = None
+coinbase_ws = None
+
+
+# Crypto Volume and Pattern Analyzer Start
+# ========= NEW: CANDLE PATTERN & VOLUME SCANNER =========
+
+@app.route("/scan_candle_patterns", methods=["POST"])
+def scan_candle_patterns():
+    """
+    Scan multiple symbols for candle patterns and volume changes
+    """
+    payload = request.get_json() or {}
+    timeframe = payload.get("timeframe", "1h")
+    volume_threshold = float(payload.get("volume_threshold", 1.5))  # 1.5 = 150% volume increase
+    min_volume = float(payload.get("min_volume", 100000))  # Minimum 24h volume in USD
+    max_symbols = int(payload.get("max_symbols", 50))
+    
+    try:
+        # Get active symbols from database
+        conn = get_conn()
+        cur = conn.cursor(dictionary=True)
+        
+        # Get symbols with recent data and sufficient volume
+        cur.execute("""
+            SELECT DISTINCT d.symbol 
+            FROM ohlcv_data d
+            JOIN daily_gainers_losers g ON d.symbol = g.symbol
+            WHERE DATE(g.fetched_at) = CURDATE()
+            AND g.volume_24h >= %s
+            ORDER BY g.volume_24h DESC
+            LIMIT %s
+        """, (min_volume, max_symbols))
+        
+        symbols = [row['symbol'] for row in cur.fetchall()]
+        cur.close()
+        conn.close()
+        
+        if not symbols:
+            # Fallback to top volume symbols from gainers table
+            conn = get_conn()
+            cur = conn.cursor(dictionary=True)
+            cur.execute("""
+                SELECT symbol 
+                FROM daily_gainers_losers 
+                WHERE DATE(fetched_at) = CURDATE()
+                AND volume_24h >= %s
+                ORDER BY volume_24h DESC
+                LIMIT %s
+            """, (min_volume, max_symbols))
+            symbols = [row['symbol'] for row in cur.fetchall()]
+            cur.close()
+            conn.close()
+        
+        results = []
+        
+        for symbol in symbols:
+            try:
+                # Get recent candles for this symbol
+                conn = get_conn()
+                cur = conn.cursor(dictionary=True)
+                cur.execute("""
+                    SELECT time_utc, open, high, low, close, volume, volume_diff
+                    FROM ohlcv_data
+                    WHERE symbol = %s AND timeframe = %s
+                    ORDER BY time_utc DESC
+                    LIMIT 100
+                """, (symbol, timeframe))
+                rows = cur.fetchall()
+                cur.close()
+                conn.close()
+                
+                if len(rows) < 20:  # Need minimum data
+                    continue
+                
+                # Convert to DataFrame
+                df = pd.DataFrame(rows)
+                df = df.sort_values('time_utc')
+                
+                # Calculate volume metrics
+                recent_volume = df['volume'].tail(5).mean()
+                previous_volume = df['volume'].iloc[-10:-5].mean()
+                
+                if previous_volume == 0:
+                    continue
+                    
+                volume_ratio = recent_volume / previous_volume
+                
+                # Check if volume spike exceeds threshold
+                if volume_ratio >= volume_threshold:
+                    # Calculate OHLC metrics
+                    df['open'] = df['open'].astype(float)
+                    df['high'] = df['high'].astype(float)
+                    df['low'] = df['low'].astype(float)
+                    df['close'] = df['close'].astype(float)
+                    
+                    # Detect candle patterns
+                    patterns = detect_candle_patterns(df)
+                    
+                    # Calculate volume profile
+                    volume_profile = analyze_volume_profile(df)
+                    
+                    # Get current price from latest candle
+                    current_price = float(df.iloc[-1]['close'])
+                    prev_close = float(df.iloc[-2]['close'])
+                    price_change = ((current_price - prev_close) / prev_close) * 100
+                    
+                    # Get 24h volume
+                    conn = get_conn()
+                    cur = conn.cursor(dictionary=True)
+                    cur.execute("""
+                        SELECT volume_24h 
+                        FROM daily_gainers_losers 
+                        WHERE symbol = %s 
+                        AND DATE(fetched_at) = CURDATE()
+                        LIMIT 1
+                    """, (symbol,))
+                    vol_row = cur.fetchone()
+                    cur.close()
+                    conn.close()
+                    
+                    results.append({
+                        "symbol": symbol,
+                        "current_price": current_price,
+                        "price_change_24h": price_change,
+                        "volume_24h": float(vol_row['volume_24h']) if vol_row else 0,
+                        "volume_ratio": round(volume_ratio, 2),
+                        "volume_spike": True,
+                        "patterns": patterns,
+                        "volume_profile": volume_profile,
+                        "timeframe": timeframe,
+                        "timestamp": datetime.utcnow().isoformat()
+                    })
+                    
+            except Exception as e:
+                print(f"Error analyzing {symbol}: {e}")
+                continue
+        
+        # Sort by volume ratio (highest first)
+        results.sort(key=lambda x: x['volume_ratio'], reverse=True)
+        
+        return jsonify({
+            "success": True,
+            "scanned_symbols": len(symbols),
+            "matches": len(results),
+            "timeframe": timeframe,
+            "volume_threshold": volume_threshold,
+            "results": results[:20]  # Return top 20
+        })
+        
+    except Exception as e:
+        print(f"Candle pattern scan error: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"success": False, "error": str(e)}), 500
+
+def detect_candle_patterns(df):
+    """
+    Detect common candle patterns
+    """
+    patterns = []
+    
+    if len(df) < 3:
+        return patterns
+    
+    # Convert to float arrays
+    opens = df['open'].astype(float).values
+    highs = df['high'].astype(float).values
+    lows = df['low'].astype(float).values
+    closes = df['close'].astype(float).values
+    
+    # Check last 3 candles for patterns
+    for i in range(max(0, len(df)-3), len(df)-1):
+        # Bullish Engulfing
+        if (closes[i] < opens[i] and  # Previous candle is bearish
+            closes[i+1] > opens[i+1] and  # Current candle is bullish
+            opens[i+1] < closes[i] and
+            closes[i+1] > opens[i]):
+            patterns.append({
+                "name": "BULLISH_ENGULFING",
+                "index": i,
+                "strength": "medium",
+                "description": "Bullish reversal pattern"
+            })
+        
+        # Bearish Engulfing
+        elif (closes[i] > opens[i] and  # Previous candle is bullish
+              closes[i+1] < opens[i+1] and  # Current candle is bearish
+              opens[i+1] > closes[i] and
+              closes[i+1] < opens[i]):
+            patterns.append({
+                "name": "BEARISH_ENGULFING",
+                "index": i,
+                "strength": "medium",
+                "description": "Bearish reversal pattern"
+            })
+        
+        # Hammer
+        if (min(opens[i], closes[i]) > lows[i] and  # Long lower shadow
+            (highs[i] - max(opens[i], closes[i])) <= (max(opens[i], closes[i]) - lows[i]) * 0.3 and  # Small upper shadow
+            (max(opens[i], closes[i]) - min(opens[i], closes[i])) <= (max(opens[i], closes[i]) - lows[i]) * 0.1):  # Small body
+            if closes[i] > opens[i]:
+                patterns.append({
+                    "name": "BULLISH_HAMMER",
+                    "index": i,
+                    "strength": "medium",
+                    "description": "Bullish reversal at bottom"
+                })
+        
+        # Shooting Star
+        if (max(opens[i], closes[i]) < highs[i] and  # Long upper shadow
+            (min(opens[i], closes[i]) - lows[i]) <= (highs[i] - min(opens[i], closes[i])) * 0.3 and  # Small lower shadow
+            (max(opens[i], closes[i]) - min(opens[i], closes[i])) <= (highs[i] - min(opens[i], closes[i])) * 0.1):  # Small body
+            if closes[i] < opens[i]:
+                patterns.append({
+                    "name": "SHOOTING_STAR",
+                    "index": i,
+                    "strength": "medium",
+                    "description": "Bearish reversal at top"
+                })
+        
+        # Doji (indecision)
+        body_size = abs(closes[i] - opens[i])
+        total_range = highs[i] - lows[i]
+        if total_range > 0 and body_size / total_range < 0.1:
+            patterns.append({
+                "name": "DOJI",
+                "index": i,
+                "strength": "low",
+                "description": "Indecision pattern"
+            })
+    
+    # Check for volume confirmation
+    if patterns:
+        volumes = df['volume'].astype(float).values
+        for pattern in patterns:
+            idx = pattern["index"]
+            if idx > 0:
+                volume_increase = volumes[idx] / volumes[idx-1] if volumes[idx-1] > 0 else 1
+                pattern["volume_confirmation"] = volume_increase > 1.2
+    
+    return patterns
+
+def analyze_volume_profile(df):
+    """
+    Analyze volume profile and trends
+    """
+    if len(df) < 10:
+        return {}
+    
+    volumes = df['volume'].astype(float).values
+    
+    # Calculate volume metrics
+    recent_avg = volumes[-5:].mean()
+    previous_avg = volumes[-10:-5].mean()
+    volume_trend = "neutral"
+    
+    if previous_avg > 0:
+        ratio = recent_avg / previous_avg
+        if ratio > 1.5:
+            volume_trend = "strong_increasing"
+        elif ratio > 1.2:
+            volume_trend = "increasing"
+        elif ratio < 0.8:
+            volume_trend = "decreasing"
+        elif ratio < 0.5:
+            volume_trend = "strong_decreasing"
+    
+    # Volume volatility
+    volume_std = np.std(volumes[-10:])
+    volume_mean = np.mean(volumes[-10:])
+    volume_volatility = volume_std / volume_mean if volume_mean > 0 else 0
+    
+    # Volume spikes
+    volume_spikes = []
+    for i in range(max(0, len(volumes)-5), len(volumes)-1):
+        if volumes[i] > volumes[i-1] * 1.5 and volumes[i] > np.mean(volumes[max(0,i-5):i]):
+            volume_spikes.append({
+                "index": i,
+                "ratio": volumes[i] / volumes[i-1] if volumes[i-1] > 0 else 1
+            })
+    
+    return {
+        "current_volume": float(volumes[-1]),
+        "average_volume_5": float(recent_avg),
+        "average_volume_10": float(previous_avg),
+        "volume_trend": volume_trend,
+        "volume_volatility": float(volume_volatility),
+        "volume_spikes_count": len(volume_spikes),
+        "last_spike_index": volume_spikes[-1]["index"] if volume_spikes else None,
+        "last_spike_ratio": volume_spikes[-1]["ratio"] if volume_spikes else 1.0
+    }
+
+@app.route("/real_time_volume_analysis", methods=["POST"])
+def real_time_volume_analysis():
+    """
+    Real-time volume analysis for a specific symbol across multiple exchanges
+    """
+    payload = request.get_json() or {}
+    symbol = payload.get("symbol", real_time_data["current_symbol"])
+    timeframe = payload.get("timeframe", "5m")
+    lookback = int(payload.get("lookback", 20))
+    
+    try:
+        # Fetch recent OHLCV data
+        conn = get_conn()
+        cur = conn.cursor(dictionary=True)
+        cur.execute("""
+            SELECT time_utc, open, high, low, close, volume, volume_diff
+            FROM ohlcv_data
+            WHERE symbol = %s AND timeframe = %s
+            ORDER BY time_utc DESC
+            LIMIT %s
+        """, (symbol, timeframe, lookback))
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+        
+        if len(rows) < 5:
+            return jsonify({
+                "success": False,
+                "error": "Insufficient data for analysis"
+            }), 400
+        
+        df = pd.DataFrame(rows)
+        df = df.sort_values('time_utc')
+        
+        # Calculate volume metrics
+        volumes = df['volume'].astype(float).values
+        volume_diffs = df['volume_diff'].astype(float).values
+        
+        # Volume analysis
+        current_volume = float(volumes[-1])
+        avg_volume_5 = float(np.mean(volumes[-5:]))
+        avg_volume_10 = float(np.mean(volumes[-10:]) if len(volumes) >= 10 else np.mean(volumes))
+        
+        # Volume trend
+        volume_trend = ""
+        if avg_volume_5 > avg_volume_10 * 1.3:
+            volume_trend = "STRONG_UPTREND"
+        elif avg_volume_5 > avg_volume_10:
+            volume_trend = "UPTREND"
+        elif avg_volume_5 < avg_volume_10 * 0.7:
+            volume_trend = "STRONG_DOWNTREND"
+        elif avg_volume_5 < avg_volume_10:
+            volume_trend = "DOWNTREND"
+        else:
+            volume_trend = "SIDEWAYS"
+        
+        # Volume spikes
+        volume_spikes = []
+        threshold = np.mean(volumes) * 1.5
+        
+        for i in range(len(volumes)):
+            if volumes[i] > threshold:
+                volume_spikes.append({
+                    "index": i,
+                    "volume": float(volumes[i]),
+                    "ratio": float(volumes[i] / np.mean(volumes[max(0,i-3):i]) if i > 0 else 1)
+                })
+        
+        # Volume vs Price analysis
+        closes = df['close'].astype(float).values
+        volume_price_correlation = np.corrcoef(volumes[-10:], closes[-10:])[0,1] if len(volumes) >= 10 else 0
+        
+        # Calculate Volume Weighted Average Price (VWAP)
+        if len(df) > 0:
+            typical_price = (df['high'].astype(float) + df['low'].astype(float) + df['close'].astype(float)) / 3
+            vwap = (typical_price * df['volume'].astype(float)).sum() / df['volume'].astype(float).sum()
+        else:
+            vwap = 0
+        
+        # Volume-based signals
+        signals = []
+        if current_volume > avg_volume_5 * 1.5:
+            if closes[-1] > closes[-2]:
+                signals.append("HIGH_VOLUME_BREAKOUT")
+            else:
+                signals.append("HIGH_VOLUME_SELLOFF")
+        
+        if volume_diffs[-1] > np.mean(volume_diffs[-5:]) * 2:
+            signals.append("VOLUME_SPIKE")
+        
+        # Real-time exchange volume data
+        exchange_volumes = {}
+        for exchange in real_time_data["order_book"].keys():
+            # Estimate volume from order book depth
+            bids = real_time_data["order_book"][exchange]["bids"]
+            asks = real_time_data["order_book"][exchange]["asks"]
+            total_depth = sum(q for _, q in bids) + sum(q for _, q in asks)
+            exchange_volumes[exchange] = total_depth
+        
+        return jsonify({
+            "success": True,
+            "symbol": symbol,
+            "timeframe": timeframe,
+            "volume_metrics": {
+                "current_volume": current_volume,
+                "average_5_candles": avg_volume_5,
+                "average_10_candles": avg_volume_10,
+                "volume_trend": volume_trend,
+                "volume_change_pct": ((current_volume - avg_volume_10) / avg_volume_10 * 100) if avg_volume_10 > 0 else 0,
+                "volume_volatility": float(np.std(volumes) / np.mean(volumes) if np.mean(volumes) > 0 else 0),
+                "vwap": float(vwap)
+            },
+            "volume_spikes": volume_spikes[-5:],  # Last 5 spikes
+            "volume_price_correlation": float(volume_price_correlation),
+            "signals": signals,
+            "exchange_volumes": exchange_volumes,
+            "analysis_timestamp": datetime.utcnow().isoformat()
+        })
+        
+    except Exception as e:
+        print(f"Real-time volume analysis error: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/monitor_volume_changes", methods=["POST"])
+def monitor_volume_changes():
+    """
+    Monitor volume changes for multiple symbols in real-time
+    """
+    payload = request.get_json() or {}
+    symbols = payload.get("symbols", [])
+    timeframe = payload.get("timeframe", "5m")
+    alert_threshold = float(payload.get("alert_threshold", 2.0))  # 200% volume increase
+    
+    if not symbols:
+        # Get top volume symbols
+        conn = get_conn()
+        cur = conn.cursor(dictionary=True)
+        cur.execute("""
+            SELECT symbol 
+            FROM daily_gainers_losers 
+            WHERE DATE(fetched_at) = CURDATE()
+            ORDER BY volume_24h DESC
+            LIMIT 20
+        """)
+        rows = cur.fetchall()
+        symbols = [row['symbol'] for row in rows]
+        cur.close()
+        conn.close()
+    
+    results = []
+    alerts = []
+    
+    for symbol in symbols:
+        try:
+            # Get recent volume data
+            conn = get_conn()
+            cur = conn.cursor(dictionary=True)
+            cur.execute("""
+                SELECT volume, time_utc
+                FROM ohlcv_data
+                WHERE symbol = %s AND timeframe = %s
+                ORDER BY time_utc DESC
+                LIMIT 10
+            """, (symbol, timeframe))
+            rows = cur.fetchall()
+            cur.close()
+            conn.close()
+            
+            if len(rows) >= 5:
+                volumes = [float(row['volume']) for row in rows]
+                current_volume = volumes[0]
+                previous_avg = np.mean(volumes[1:5])
+                
+                if previous_avg > 0:
+                    volume_ratio = current_volume / previous_avg
+                    
+                    result = {
+                        "symbol": symbol,
+                        "current_volume": current_volume,
+                        "previous_average": previous_avg,
+                        "volume_ratio": float(volume_ratio),
+                        "volume_change_pct": float((volume_ratio - 1) * 100),
+                        "alert": volume_ratio >= alert_threshold
+                    }
+                    
+                    results.append(result)
+                    
+                    if volume_ratio >= alert_threshold:
+                        alerts.append({
+                            "symbol": symbol,
+                            "volume_ratio": float(volume_ratio),
+                            "current_volume": current_volume,
+                            "timestamp": datetime.utcnow().isoformat(),
+                            "message": f"Volume spike detected: {volume_ratio:.1f}x average"
+                        })
+        
+        except Exception as e:
+            print(f"Error monitoring {symbol}: {e}")
+            continue
+    
+    # Sort by volume ratio
+    results.sort(key=lambda x: x['volume_ratio'], reverse=True)
+    
+    return jsonify({
+        "success": True,
+        "monitored_symbols": len(symbols),
+        "alerts_count": len(alerts),
+        "alert_threshold": alert_threshold,
+        "timeframe": timeframe,
+        "results": results[:10],  # Top 10
+        "alerts": alerts,
+        "timestamp": datetime.utcnow().isoformat()
+    })
+# Stop 
+
+
+# ========= REAL-TIME ANALYSIS ENDPOINTS =========
+
+@app.route("/realtime_analysis", methods=["POST"])
+
+def realtime_analysis():
+    """Advanced real-time analysis combining order book, trades, and technical indicators"""
+    try:
+        #removed "kucoin", from code 
+        # Get request parameters
+        payload = request.get_json() or {}
+        symbol = payload.get("symbol", real_time_data["current_symbol"])
+        selected_exchanges = payload.get("exchanges", ["binance", "bybit", "okx", "gateio", "huobi", "kraken", "bitget", "mexc", "coinbase"])
+        time_window = int(payload.get("time_window", 60))  # seconds
+        prediction_horizon = int(payload.get("prediction_horizon", 5))  # minutes
+        
+        # Get current time
+        now = time.time()
+        
+        # Filter data by selected exchanges
+        filtered_order_book = {}
+        for exchange in selected_exchanges:
+            if exchange in real_time_data["order_book"]:
+                filtered_order_book[exchange] = real_time_data["order_book"][exchange]
+        
+        # Filter trades by selected exchanges and time window
+        recent_trades = [
+            t for t in real_time_data["trades"]
+            if t[4] in selected_exchanges and (now - t[2] <= time_window)
+        ]
+        
+        # Calculate combined order book metrics
+        combined_bids = []
+        combined_asks = []
+        total_bid_volume = 0.0
+        total_ask_volume = 0.0
+        
+        for exchange, book in filtered_order_book.items():
+            for price, volume in book["bids"]:
+                combined_bids.append([price, volume])
+                total_bid_volume += volume
+            for price, volume in book["asks"]:
+                combined_asks.append([price, volume])
+                total_ask_volume += volume
+        
+        # Sort and limit
+        combined_bids.sort(key=lambda x: x[0], reverse=True)
+        combined_asks.sort(key=lambda x: x[0])
+        combined_bids = combined_bids[:20]
+        combined_asks = combined_asks[:20]
+        
+        # Calculate order flow metrics
+        total_volume = total_bid_volume + total_ask_volume
+        order_flow_imbalance = 0.0
+        if total_volume > 0:
+            order_flow_imbalance = (total_bid_volume - total_ask_volume) / total_volume
+        
+        # Calculate trade metrics
+        buy_trades = 0
+        sell_trades = 0
+        buy_volume = 0.0
+        sell_volume = 0.0
+        trade_prices = []
+        
+        for trade in recent_trades:
+            price, volume, timestamp, side, exchange = trade
+            trade_prices.append(price)
+            if side == 'b':
+                buy_trades += 1
+                buy_volume += volume
+            else:
+                sell_trades += 1
+                sell_volume += volume
+        
+        total_trades = buy_trades + sell_trades
+        trade_ratio = buy_trades / total_trades if total_trades > 0 else 0.5
+        
+        # Calculate price metrics
+        current_price = 0.0
+        if trade_prices:
+            current_price = trade_prices[-1]
+        elif combined_bids and combined_asks:
+            current_price = (combined_bids[0][0] + combined_asks[0][0]) / 2
+        
+        # Calculate price change
+        price_change = 0.0
+        if len(trade_prices) >= 2:
+            oldest_price = trade_prices[0]
+            latest_price = trade_prices[-1]
+            price_change = ((latest_price - oldest_price) / oldest_price) * 100
+        
+        # Calculate volatility
+        volatility = 0.0
+        if len(trade_prices) >= 2:
+            prices_array = np.array(trade_prices)
+            volatility = np.std(prices_array) / np.mean(prices_array) * 100
+        
+        # Calculate momentum
+        momentum = 0.0
+        if len(trade_prices) >= 5:
+            recent_prices = trade_prices[-5:]
+            momentum = ((recent_prices[-1] - recent_prices[0]) / recent_prices[0]) * 100
+        
+        # Calculate VWAP
+        vwap = 0.0
+        if recent_trades:
+            total_value = sum(t[0] * t[1] for t in recent_trades)
+            total_volume_traded = sum(t[1] for t in recent_trades)
+            vwap = total_value / total_volume_traded if total_volume_traded > 0 else current_price
+        
+        # Calculate support and resistance levels
+        support_levels = [bid[0] for bid in combined_bids[:5]]
+        resistance_levels = [ask[0] for ask in combined_asks[:5]]
+        
+        # Generate trading signal
+        signal = generate_realtime_signal({
+            "order_flow_imbalance": order_flow_imbalance,
+            "trade_ratio": trade_ratio,
+            "price_change": price_change,
+            "volatility": volatility,
+            "momentum": momentum,
+            "current_price": current_price,
+            "vwap": vwap,
+            "buy_volume": buy_volume,
+            "sell_volume": sell_volume
+        })
+        
+        # Generate price predictions
+        predictions = generate_realtime_predictions({
+            "current_price": current_price,
+            "order_flow_imbalance": order_flow_imbalance,
+            "momentum": momentum,
+            "volatility": volatility,
+            "prediction_horizon": prediction_horizon
+        })
+        
+        # Calculate market sentiment
+        sentiment = calculate_market_sentiment({
+            "order_flow_imbalance": order_flow_imbalance,
+            "trade_ratio": trade_ratio,
+            "momentum": momentum,
+            "price_change": price_change
+        })
+        
+        # Prepare response
+        response = {
+            "success": True,
+            "timestamp": now,
+            "symbol": symbol,
+            "selected_exchanges": selected_exchanges,
+            "time_window": time_window,
+            "metrics": {
+                "current_price": current_price,
+                "price_change": price_change,
+                "order_flow_imbalance": order_flow_imbalance,
+                "total_bid_volume": total_bid_volume,
+                "total_ask_volume": total_ask_volume,
+                "buy_trades": buy_trades,
+                "sell_trades": sell_trades,
+                "buy_volume": buy_volume,
+                "sell_volume": sell_volume,
+                "trade_ratio": trade_ratio,
+                "volatility": volatility,
+                "momentum": momentum,
+                "vwap": vwap
+            },
+            "levels": {
+                "support": support_levels,
+                "resistance": resistance_levels,
+                "stop_loss": calculate_stop_loss(current_price, support_levels, resistance_levels, signal)
+            },
+            "order_book_summary": {
+                "top_bids": combined_bids[:5],
+                "top_asks": combined_asks[:5],
+                "bid_ask_spread": combined_asks[0][0] - combined_bids[0][0] if combined_bids and combined_asks else 0
+            },
+            "signal": signal,
+            "predictions": predictions,
+            "sentiment": sentiment,
+            "recent_trades_count": len(recent_trades)
+        }
+        
+        return jsonify(response)
+        
+    except Exception as e:
+        print(f"Real-time analysis error: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"success": False, "error": str(e)}), 500
+
+def generate_realtime_signal(metrics: Dict[str, Any]) -> Dict[str, Any]:
+    """Generate trading signal based on real-time metrics"""
+    
+    score = 50  # Neutral starting point
+    
+    # Order flow imbalance contribution
+    imbalance = metrics["order_flow_imbalance"]
+    if imbalance > 0.3:
+        score += 25
+    elif imbalance > 0.1:
+        score += 15
+    elif imbalance < -0.3:
+        score -= 25
+    elif imbalance < -0.1:
+        score -= 15
+    
+    # Trade ratio contribution
+    trade_ratio = metrics["trade_ratio"]
+    if trade_ratio > 0.7:
+        score += 20
+    elif trade_ratio < 0.3:
+        score -= 20
+    
+    # Momentum contribution
+    momentum = metrics["momentum"]
+    if momentum > 0.5:
+        score += 15
+    elif momentum < -0.5:
+        score -= 15
+    
+    # Price vs VWAP
+    if metrics["current_price"] > metrics["vwap"] * 1.001:
+        score += 10
+    elif metrics["current_price"] < metrics["vwap"] * 0.999:
+        score -= 10
+    
+    # Volume dominance
+    total_volume = metrics["buy_volume"] + metrics["sell_volume"]
+    if total_volume > 0:
+        volume_ratio = metrics["buy_volume"] / total_volume
+        if volume_ratio > 0.7:
+            score += 10
+        elif volume_ratio < 0.3:
+            score -= 10
+    
+    # Cap score between 0 and 100
+    score = max(0, min(100, score))
+    
+    # Determine signal
+    if score >= 80:
+        signal = "STRONG_BUY"
+        icon = "🚀"
+        confidence = "High"
+        color_class = "buy"
+    elif score >= 65:
+        signal = "BUY"
+        icon = "📈"
+        confidence = "Medium"
+        color_class = "buy"
+    elif score >= 45:
+        signal = "HOLD"
+        icon = "⏸️"
+        confidence = "Low"
+        color_class = "neutral"
+    elif score >= 30:
+        signal = "SELL"
+        icon = "📉"
+        confidence = "Medium"
+        color_class = "sell"
+    else:
+        signal = "STRONG_SELL"
+        icon = "🔥"
+        confidence = "High"
+        color_class = "sell"
+    
+    return {
+        "signal": signal,
+        "icon": icon,
+        "confidence": confidence,
+        "score": score,
+        "color_class": color_class,
+        "reasons": [
+            f"Order flow: {'Buying' if imbalance > 0 else 'Selling'} pressure",
+            f"Trade ratio: {trade_ratio:.1%} buys",
+            f"Momentum: {'Up' if momentum > 0 else 'Down'} {abs(momentum):.2f}%"
+        ]
+    }
+
+def generate_realtime_predictions(metrics: Dict[str, Any]) -> Dict[str, Any]:
+    """Generate price predictions based on real-time metrics"""
+    
+    current_price = metrics["current_price"]
+    imbalance = metrics["order_flow_imbalance"]
+    momentum = metrics["momentum"]
+    volatility = metrics["volatility"]
+    horizon = metrics["prediction_horizon"]
+    
+    # Base prediction formula
+    base_change_percent = (imbalance * 0.5 + momentum * 0.02) * horizon
+    
+    # Add volatility adjustment
+    volatility_adjustment = (volatility / 100) * math.sqrt(horizon) * (np.random.random() - 0.5)
+    
+    # Calculate predictions for different timeframes
+    pred_5min = current_price * (1 + (base_change_percent + volatility_adjustment * 0.5) / 100)
+    pred_15min = current_price * (1 + (base_change_percent * 3 + volatility_adjustment) / 100)
+    
+    # Calculate confidence range
+    confidence_range = volatility / 100 * 2  # 2x volatility as confidence range
+    
+    return {
+        "5_min": {
+            "price": pred_5min,
+            "change_percent": ((pred_5min - current_price) / current_price) * 100,
+            "confidence": max(30, 100 - abs(base_change_percent) * 10)
+        },
+        "15_min": {
+            "price": pred_15min,
+            "change_percent": ((pred_15min - current_price) / current_price) * 100,
+            "confidence": max(20, 100 - abs(base_change_percent * 3) * 10)
+        },
+        "range": {
+            "lower": current_price * (1 - confidence_range),
+            "upper": current_price * (1 + confidence_range)
+        }
+    }
+
+def calculate_market_sentiment(metrics: Dict[str, Any]) -> Dict[str, Any]:
+    """Calculate overall market sentiment"""
+    
+    sentiment_score = 50
+    
+    # Weighted contributions
+    sentiment_score += metrics["order_flow_imbalance"] * 25
+    sentiment_score += (metrics["trade_ratio"] - 0.5) * 20
+    sentiment_score += metrics["momentum"] * 5
+    sentiment_score += metrics["price_change"] * 2
+    
+    # Cap score
+    sentiment_score = max(0, min(100, sentiment_score))
+    
+    # Determine sentiment category
+    if sentiment_score >= 70:
+        sentiment = "Bullish"
+        icon = "😊"
+    elif sentiment_score >= 60:
+        sentiment = "Slightly Bullish"
+        icon = "🙂"
+    elif sentiment_score >= 40:
+        sentiment = "Neutral"
+        icon = "😐"
+    elif sentiment_score >= 30:
+        sentiment = "Slightly Bearish"
+        icon = "😕"
+    else:
+        sentiment = "Bearish"
+        icon = "😟"
+    
+    return {
+        "sentiment": sentiment,
+        "icon": icon,
+        "score": sentiment_score,
+        "description": f"Market shows {sentiment.lower()} sentiment"
+    }
+
+def calculate_stop_loss(current_price: float, support_levels: List[float], 
+                       resistance_levels: List[float], signal: Dict[str, Any]) -> float:
+    """Calculate stop loss level based on signal and support/resistance"""
+    
+    if not support_levels or not resistance_levels:
+        return current_price * 0.97  # Default 3% stop loss
+    
+    if "BUY" in signal["signal"]:
+        # For buy signals, stop loss below support
+        stop_loss = min(support_levels) * 0.97  # 3% below support
+    elif "SELL" in signal["signal"]:
+        # For sell signals, stop loss above resistance
+        stop_loss = max(resistance_levels) * 1.03  # 3% above resistance
+    else:
+        # For neutral/hold, use tighter stop loss
+        stop_loss = current_price * 0.99  # 1% stop loss
+    
+    return stop_loss
+
+# ========= ENHANCED PREDICTION ENDPOINTS =========
+
+@app.route("/multi_timeframe_analysis", methods=["POST"])
+def multi_timeframe_analysis():
+    """Enhanced multi-timeframe analysis with support/resistance and signals"""
+    payload = request.get_json() or {}
+    symbol = payload.get("symbol", "BTC/USDT").upper()
+    timeframes = payload.get("timeframes", ["1h", "4h", "1d", "1w"])
+    look_back = int(payload.get("look_back", 100))
+    
+    try:
+        predictions = []
+        all_indicators = {}
+        
+        # Analyze each timeframe
+        for timeframe in timeframes:
+            # Get data for this timeframe
+            conn = get_conn()
+            cur = conn.cursor(dictionary=True)
+            cur.execute("""
+                SELECT time_utc, open, high, low, close, volume
+                FROM ohlcv_data
+                WHERE symbol = %s AND timeframe = %s
+                ORDER BY time_utc DESC
+                LIMIT %s
+            """, (symbol, timeframe, look_back))
+            rows = cur.fetchall()
+            cur.close()
+            conn.close()
+            
+            if len(rows) < 20:  # Need minimum data
+                continue
+            
+            # Convert to DataFrame
+            df = pd.DataFrame(rows)
+            df = df.sort_values('time_utc')
+            
+            # Calculate indicators
+            close_prices = df['close'].astype(float)
+            high_prices = df['high'].astype(float)
+            low_prices = df['low'].astype(float)
+            volume = df['volume'].astype(float)
+            
+            # Calculate RSI
+            rsi = ta.rsi(close_prices, length=14).iloc[-1] if len(close_prices) >= 14 else None
+            
+            # Calculate MACD
+            macd_result = ta.macd(close_prices, fast=12, slow=26, signal=9)
+            macd = macd_result.iloc[-1, 0] if not macd_result.empty else None
+            macd_signal = macd_result.iloc[-1, 1] if macd_result.shape[1] > 1 else None
+            
+            # Calculate EMAs
+            ema_20 = ta.ema(close_prices, length=20).iloc[-1] if len(close_prices) >= 20 else None
+            ema_50 = ta.ema(close_prices, length=50).iloc[-1] if len(close_prices) >= 50 else None
+            ema_200 = ta.ema(close_prices, length=200).iloc[-1] if len(close_prices) >= 200 else None
+            
+            # Calculate support and resistance using recent highs/lows
+            recent_highs = high_prices.tail(20)
+            recent_lows = low_prices.tail(20)
+            
+            support_level = round(float(recent_lows.min()), 4)
+            resistance_level = round(float(recent_highs.max()), 4)
+            
+            # Calculate ATR for volatility
+            atr = ta.atr(high_prices, low_prices, close_prices, length=14).iloc[-1] if len(close_prices) >= 14 else None
+            
+            # Generate prediction using pattern matching
+            prediction_result = predict_for_timeframe(symbol, timeframe, look_back)
+            
+            # Determine signal
+            signal, recommendation = generate_signal(
+                rsi=rsi,
+                macd=macd,
+                macd_signal=macd_signal,
+                ema_20=ema_20,
+                ema_50=ema_50,
+                current_price=float(close_prices.iloc[-1]),
+                predicted_change=prediction_result.get('predicted_change', 0) if prediction_result else 0
+            )
+            
+            # Calculate confidence
+            confidence = calculate_confidence(
+                rsi=rsi,
+                macd_strength=abs(macd - macd_signal) if macd and macd_signal else 0,
+                trend_alignment=check_trend_alignment(ema_20, ema_50, ema_200, close_prices.iloc[-1]),
+                volume_trend=check_volume_trend(volume)
+            )
+            
+            prediction_data = {
+                "timeframe": timeframe,
+                "current_price": float(close_prices.iloc[-1]),
+                "rsi": float(rsi) if rsi else None,
+                "macd": float(macd) if macd else None,
+                "macd_signal": float(macd_signal) if macd_signal else None,
+                "ema_20": float(ema_20) if ema_20 else None,
+                "ema_50": float(ema_50) if ema_50 else None,
+                "ema_200": float(ema_200) if ema_200 else None,
+                "support": support_level,
+                "resistance": resistance_level,
+                "atr": float(atr) if atr else None,
+                "predicted_change": prediction_result.get('predicted_change', 0) if prediction_result else 0,
+                "signal": signal,
+                "recommendation": recommendation,
+                "confidence": confidence,
+                "macd_status": "Bullish" if macd and macd_signal and macd > macd_signal else "Bearish" if macd and macd_signal else "Neutral"
+            }
+            
+            predictions.append(prediction_data)
+            all_indicators[timeframe] = prediction_data
+        
+        # Generate overall summary
+        summary = generate_overall_summary(predictions, symbol)
+        
+        return jsonify({
+            "success": True,
+            "symbol": symbol,
+            "predictions": predictions,
+            "summary": summary,
+            "timestamp": datetime.utcnow().isoformat()
+        })
+        
+    except Exception as e:
+        print(f"Multi timeframe analysis error: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"success": False, "error": str(e)}), 500
+
+def predict_for_timeframe(symbol, timeframe, look_back):
+    """Helper function to predict for a specific timeframe"""
+    try:
+        # Try to get prediction from existing endpoint
+        response = requests.post(
+            f"http://127.0.0.1:8000/predict_candle",
+            json={"symbol": symbol, "timeframe": timeframe, "look_back": look_back},
+            timeout=10
+        )
+        if response.status_code == 200:
+            data = response.json()
+            if data.get("success"):
+                pred = data.get("prediction", {})
+                return {
+                    "predicted_change": pred.get("pct_close", 0),
+                    "confidence": pred.get("confidence", 50),
+                    "matches": pred.get("matches", 0)
+                }
+    except Exception:
+        pass
+    
+    # Fallback: simple prediction based on recent trend
+    conn = get_conn()
+    cur = conn.cursor(dictionary=True)
+    cur.execute("""
+        SELECT close FROM ohlcv_data 
+        WHERE symbol = %s AND timeframe = %s 
+        ORDER BY time_utc DESC LIMIT 20
+    """, (symbol, timeframe))
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    
+    if len(rows) >= 10:
+        prices = [float(r['close']) for r in rows[:10]]
+        recent_change = ((prices[0] - prices[-1]) / prices[-1]) * 100
+        
+        # Simple momentum-based prediction
+        predicted_change = recent_change * 0.7  # Assume continuation but weaker
+        confidence = min(70, abs(predicted_change) * 2)  # Higher confidence for stronger moves
+        
+        return {
+            "predicted_change": round(predicted_change, 2),
+            "confidence": round(confidence, 1),
+            "matches": 0
+        }
+    
+    return {"predicted_change": 0, "confidence": 50, "matches": 0}
+
+def generate_signal(rsi, macd, macd_signal, ema_20, ema_50, current_price, predicted_change):
+    """Generate trading signal based on multiple indicators"""
+    
+    signal_score = 0
+    reasons = []
+    
+    # RSI analysis
+    if rsi:
+        if rsi < 30:
+            signal_score += 20
+            reasons.append("RSI oversold")
+        elif rsi > 70:
+            signal_score -= 20
+            reasons.append("RSI overbought")
+        elif rsi > 50:
+            signal_score += 5
+        else:
+            signal_score -= 5
+    
+    # MACD analysis
+    if macd and macd_signal:
+        if macd > macd_signal and macd > 0:
+            signal_score += 15
+            reasons.append("MACD bullish")
+        elif macd < macd_signal and macd < 0:
+            signal_score -= 15
+            reasons.append("MACD bearish")
+    
+    # EMA analysis
+    if ema_20 and ema_50:
+        if current_price > ema_20 > ema_50:
+            signal_score += 15
+            reasons.append("Strong uptrend")
+        elif current_price < ema_20 < ema_50:
+            signal_score -= 15
+            reasons.append("Strong downtrend")
+        elif current_price > ema_20:
+            signal_score += 5
+        else:
+            signal_score -= 5
+    
+    # Predicted change
+    if predicted_change > 1:
+        signal_score += 10
+        reasons.append(f"Predicted +{predicted_change:.1f}%")
+    elif predicted_change < -1:
+        signal_score -= 10
+        reasons.append(f"Predicted {predicted_change:.1f}%")
+    
+    # Determine final signal
+    if signal_score >= 30:
+        signal = "STRONG BULLISH"
+        recommendation = "BUY/LONG"
+    elif signal_score >= 15:
+        signal = "BULLISH"
+        recommendation = "BUY (Small)"
+    elif signal_score <= -30:
+        signal = "STRONG BEARISH"
+        recommendation = "SELL/SHORT"
+    elif signal_score <= -15:
+        signal = "BEARISH"
+        recommendation = "SELL (Small)"
+    elif signal_score > 0:
+        signal = "SLIGHTLY BULLISH"
+        recommendation = "HOLD/BUY Dips"
+    elif signal_score < 0:
+        signal = "SLIGHTLY BEARISH"
+        recommendation = "HOLD/SELL Rallies"
+    else:
+        signal = "NEUTRAL"
+        recommendation = "HOLD/Wait"
+    
+    return signal, recommendation
+
+def calculate_confidence(rsi, macd_strength, trend_alignment, volume_trend):
+    """Calculate confidence score (0-100)"""
+    confidence = 50
+    
+    # RSI confidence
+    if rsi:
+        if rsi < 25 or rsi > 75:
+            confidence += 15  # Extreme readings are more confident
+        elif 45 < rsi < 55:
+            confidence -= 10  # Middle RSI is less confident
+    
+    # MACD strength
+    confidence += min(20, macd_strength * 10)
+    
+    # Trend alignment
+    confidence += trend_alignment * 10
+    
+    # Volume trend
+    confidence += volume_trend * 5
+    
+    # Cap between 10 and 95
+    confidence = max(10, min(95, confidence))
+    
+    return round(confidence)
+
+def check_trend_alignment(ema_20, ema_50, ema_200, current_price):
+    """Check if trends are aligned (returns -1 to 1)"""
+    if not all([ema_20, ema_50, ema_200]):
+        return 0
+    
+    # Check if all EMAs are in order (uptrend: price > ema20 > ema50 > ema200)
+    if current_price > ema_20 > ema_50 > ema_200:
+        return 1  # Strong uptrend alignment
+    elif current_price < ema_20 < ema_50 < ema_200:
+        return -1  # Strong downtrend alignment
+    elif current_price > ema_20 > ema_50:
+        return 0.5  # Partial uptrend
+    elif current_price < ema_20 < ema_50:
+        return -0.5  # Partial downtrend
+    
+    return 0  # No clear alignment
+
+def check_volume_trend(volume_series):
+    """Check if volume is increasing (returns -1 to 1)"""
+    if len(volume_series) < 5:
+        return 0
+    
+    recent_avg = volume_series.tail(5).mean()
+    previous_avg = volume_series.iloc[-10:-5].mean()
+    
+    if previous_avg == 0:
+        return 0
+    
+    ratio = recent_avg / previous_avg
+    
+    if ratio > 1.3:
+        return 1  # Volume increasing
+    elif ratio < 0.7:
+        return -1  # Volume decreasing
+    
+    return 0
+
+def generate_overall_summary(predictions, symbol):
+    """Generate overall market summary"""
+    if not predictions:
+        return {
+            "overall_signal": "NEUTRAL",
+            "trend_direction": "Sideways",
+            "confidence": 50,
+            "recommended_action": "Wait",
+            "support_levels": [],
+            "resistance_levels": [],
+            "stop_loss_level": None,
+            "rsi": None,
+            "macd": None,
+            "volatility": "Low"
+        }
+    
+    # Calculate weighted average signal
+    total_weight = 0
+    weighted_signal = 0
+    timeframe_weights = {"1h": 1, "4h": 2, "1d": 3, "1w": 4}
+    
+    all_supports = []
+    all_resistances = []
+    all_rsi = []
+    all_macd = []
+    
+    for pred in predictions:
+        weight = timeframe_weights.get(pred["timeframe"], 1)
+        signal_value = 1 if "BULL" in pred["signal"] else -1 if "BEAR" in pred["signal"] else 0
+        weighted_signal += signal_value * weight * pred["confidence"] / 100
+        total_weight += weight
+        
+        if pred.get("support"):
+            all_supports.append(pred["support"])
+        if pred.get("resistance"):
+            all_resistances.append(pred["resistance"])
+        if pred.get("rsi"):
+            all_rsi.append(pred["rsi"])
+        if pred.get("macd"):
+            all_macd.append(pred["macd"])
+    
+    avg_signal = weighted_signal / total_weight if total_weight > 0 else 0
+    
+    # Determine overall signal
+    if avg_signal > 0.3:
+        overall_signal = "BULLISH"
+        trend_direction = "Up"
+        recommended_action = "Buy/Long"
+    elif avg_signal > 0.1:
+        overall_signal = "SLIGHTLY BULLISH"
+        trend_direction = "Up (Weak)"
+        recommended_action = "Buy Dips"
+    elif avg_signal < -0.3:
+        overall_signal = "BEARISH"
+        trend_direction = "Down"
+        recommended_action = "Sell/Short"
+    elif avg_signal < -0.1:
+        overall_signal = "SLIGHTLY BEARISH"
+        trend_direction = "Down (Weak)"
+        recommended_action = "Sell Rallies"
+    else:
+        overall_signal = "NEUTRAL"
+        trend_direction = "Sideways"
+        recommended_action = "Wait/Hold"
+    
+    # Calculate confidence
+    avg_confidence = sum(p["confidence"] for p in predictions) / len(predictions) if predictions else 50
+    
+    # Calculate support/resistance levels
+    support_levels = sorted(list(set(all_supports))) if all_supports else []
+    resistance_levels = sorted(list(set(all_resistances))) if all_resistances else []
+    
+    # Calculate stop loss level (1.5x ATR below support for long, above resistance for short)
+    stop_loss_level = None
+    if support_levels and resistance_levels:
+        current_mid = (support_levels[0] + resistance_levels[0]) / 2
+        if "BULL" in overall_signal:
+            stop_loss_level = round(support_levels[0] * 0.97, 4)  # 3% below support
+        elif "BEAR" in overall_signal:
+            stop_loss_level = round(resistance_levels[0] * 1.03, 4)  # 3% above resistance
+    
+    # Calculate volatility
+    avg_atr = sum(p.get("atr", 0) for p in predictions if p.get("atr")) / len([p for p in predictions if p.get("atr")]) if any(p.get("atr") for p in predictions) else 0
+    volatility = "High" if avg_atr > 100 else "Medium" if avg_atr > 50 else "Low"
+    
+    return {
+        "overall_signal": overall_signal,
+        "trend_direction": trend_direction,
+        "confidence": round(avg_confidence, 1),
+        "recommended_action": recommended_action,
+        "support_levels": support_levels[:3],  # Top 3 supports
+        "resistance_levels": resistance_levels[:3],  # Top 3 resistances
+        "stop_loss_level": stop_loss_level,
+        "rsi": round(sum(all_rsi) / len(all_rsi), 1) if all_rsi else None,
+        "macd": {"macd": round(sum(all_macd) / len(all_macd), 4) if all_macd else None, "signal": None},
+        "volatility": volatility
+    }
+
+@app.route("/get_prediction_history", methods=["GET"])
+def get_prediction_history():
+    """Get recent prediction history"""
+    symbol = request.args.get("symbol", "BTC/USDT").upper()
+    limit = int(request.args.get("limit", 20))
+    
+    conn = get_conn()
+    cur = conn.cursor(dictionary=True)
+    
+    # Check if predictions_log table exists, create if not
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS predictions_log (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            symbol VARCHAR(20),
+            timeframe VARCHAR(10),
+            predicted_change FLOAT,
+            confidence FLOAT,
+            `signal` VARCHAR(20),
+            recommendation VARCHAR(50),
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            actual_change FLOAT DEFAULT NULL,
+            accuracy FLOAT DEFAULT NULL
+        )
+    """)
+    
+    # Get recent predictions
+    cur.execute("""
+        SELECT symbol, timeframe, predicted_change, confidence, 
+               signal, recommendation, created_at, actual_change, accuracy
+        FROM predictions_log
+        WHERE symbol = %s
+        ORDER BY created_at DESC
+        LIMIT %s
+    """, (symbol, limit))
+    
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    
+    return jsonify({
+        "success": True,
+        "predictions": rows,
+        "count": len(rows)
+    })
+
+@app.route("/log_prediction", methods=["POST"])
+def log_prediction():
+    """Log a prediction for future accuracy tracking"""
+    payload = request.get_json() or {}
+    
+    required_fields = ["symbol", "timeframe", "predicted_change", "signal"]
+    for field in required_fields:
+        if field not in payload:
+            return jsonify({"success": False, "error": f"Missing field: {field}"}), 400
+    
+    conn = get_conn()
+    cur = conn.cursor()
+    
+    try:
+        cur.execute("""
+            INSERT INTO predictions_log 
+            (symbol, timeframe, predicted_change, confidence, signal, recommendation)
+            VALUES (%s, %s, %s, %s, %s, %s)
+        """, (
+            payload["symbol"],
+            payload["timeframe"],
+            payload["predicted_change"],
+            payload.get("confidence", 50),
+            payload["signal"],
+            payload.get("recommendation", "N/A")
+        ))
+        
+        conn.commit()
+        prediction_id = cur.lastrowid
+        
+        cur.close()
+        conn.close()
+        
+        return jsonify({
+            "success": True,
+            "prediction_id": prediction_id,
+            "message": "Prediction logged successfully"
+        })
+        
+    except Exception as e:
+        conn.rollback()
+        cur.close()
+        conn.close()
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/update_prediction_accuracy", methods=["POST"])
+def update_prediction_accuracy():
+    """Update prediction with actual result"""
+    payload = request.get_json() or {}
+    
+    prediction_id = payload.get("prediction_id")
+    actual_change = payload.get("actual_change")
+    
+    if not prediction_id or actual_change is None:
+        return jsonify({"success": False, "error": "Missing prediction_id or actual_change"}), 400
+    
+    conn = get_conn()
+    cur = conn.cursor(dictionary=True)
+    
+    try:
+        # Get the original prediction
+        cur.execute("""
+            SELECT predicted_change FROM predictions_log WHERE id = %s
+        """, (prediction_id,))
+        prediction = cur.fetchone()
+        
+        if not prediction:
+            return jsonify({"success": False, "error": "Prediction not found"}), 404
+        
+        predicted_change = prediction["predicted_change"]
+        
+        # Calculate accuracy (percentage match)
+        if predicted_change == 0:
+            accuracy = 100 if actual_change == 0 else 0
+        else:
+            accuracy = max(0, 100 - abs((actual_change - predicted_change) / predicted_change * 100))
+        
+        # Update the prediction
+        cur.execute("""
+            UPDATE predictions_log 
+            SET actual_change = %s, accuracy = %s
+            WHERE id = %s
+        """, (actual_change, accuracy, prediction_id))
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        return jsonify({
+            "success": True,
+            "accuracy": round(accuracy, 2),
+            "message": "Accuracy updated"
+        })
+        
+    except Exception as e:
+        conn.rollback()
+        cur.close()
+        conn.close()
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/train_bot", methods=["POST"])
+def train_bot():
+    payload = request.get_json() or {}
+    symbol = payload.get("symbol", "BTC/USDT").upper()
+    timeframes = payload.get("timeframes", ["4h"])
+    look_back = int(payload.get("look_back", 50))
+    
+    if look_back < 10 or look_back > 5000:
+        return jsonify({"success": False, "error": "Look back must be 10-5000"}), 400
+    
+    trained = 0
+    total_patterns_added = 0
+    total_patterns_updated = 0
+    
+    for tf in timeframes:
+        # Check if pattern table exists for this timeframe
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute(f"SHOW TABLES LIKE 'patterns_{tf}'")
+        if not cur.fetchone():
+            cur.close()
+            conn.close()
+            print(f"Pattern table for timeframe {tf} doesn't exist - skipping")
+            continue
+        cur.close()
+        conn.close()
+        
+        # Fetch historical candles
+        conn = get_conn()
+        cur = conn.cursor(dictionary=True)
+        cur.execute("""
+            SELECT time_utc, open, high, low, close
+            FROM ohlcv_data
+            WHERE symbol = %s AND timeframe = %s
+            ORDER BY time_utc ASC
+        """, (symbol, tf))
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+        
+        if len(rows) < look_back + 1:
+            print(f"Not enough data for {symbol} {tf}: {len(rows)} rows, need {look_back + 1}")
+            continue
+        
+        df = pd.DataFrame(rows)
+        df['time_utc'] = pd.to_datetime(df['time_utc'])
+        
+        # Rename to match compute_triplet expectations
+        df = df.rename(columns={
+            'open': 'Open',
+            'high': 'High',
+            'low': 'Low',
+            'close': 'Close'
+        })
+        
+        df = df.sort_values('time_utc').reset_index(drop=True)
+        
+        # Compute triplets (skip first candle)
+        triplets = []
+        for i in range(1, len(df)):
+            prev_close = df.iloc[i-1]['Close']
+            triplet = compute_triplet(df.iloc[i], prev_close)
+            triplets.append(triplet)
+        
+        if len(triplets) < look_back:
+            print(f"Not enough triplets for {symbol} {tf}: {len(triplets)} triplets, need {look_back}")
+            continue
+        
+        # Build and store patterns
+        conn = get_conn()
+        cur = conn.cursor()
+        
+        patterns_processed = 0
+        patterns_added = 0
+        patterns_updated = 0
+        
+        # Process in reverse to get most recent patterns first
+        start_idx = max(0, len(triplets) - look_back - 1000)
+        
+        for i in range(start_idx, len(triplets) - look_back):
+            pattern = triplets[i:i+look_back]
+            next_triplet = triplets[i + look_back]
+            
+            pattern_str = pattern_to_string(pattern)
+            pattern_hash = pattern_to_hash(pattern)
+            new_outcome = list(next_triplet)  # [pct_close, pct_high, pct_low]
+            
+            # Check if pattern already exists
+            cur.execute(f"""
+                SELECT outcomes, occurrences 
+                FROM patterns_{tf} 
+                WHERE pattern_hash = %s
+            """, (pattern_hash,))
+            row = cur.fetchone()
+            
+            if row:
+                # Update existing pattern
+                current_outcomes = json.loads(row[0] or '[]')
+                current_outcomes.append(new_outcome)
+                updated_json = json.dumps(current_outcomes)
+                
+                cur.execute(f"""
+                    UPDATE patterns_{tf}
+                    SET outcomes = %s,
+                        occurrences = occurrences + 1
+                    WHERE pattern_hash = %s
+                """, (updated_json, pattern_hash))
+                patterns_updated += 1
+            else:
+                # Insert new pattern
+                cur.execute(f"""
+                    INSERT INTO patterns_{tf} (pattern_hash, pattern_string, outcomes, occurrences)
+                    VALUES (%s, %s, %s, 1)
+                """, (pattern_hash, pattern_str, json.dumps([new_outcome])))
+                patterns_added += 1
+            
+            # Initialize or update weights (always ensure weight exists)
+            for pred_type in ['close', 'high', 'low']:
+                # Check if weights table exists
+                cur.execute(f"SHOW TABLES LIKE 'weights_{pred_type}_{tf}'")
+                if cur.fetchone():
+                    cur.execute(f"""
+                        INSERT INTO weights_{pred_type}_{tf} (pattern_hash, weight)
+                        VALUES (%s, 1.0)
+                        ON DUPLICATE KEY UPDATE pattern_hash = pattern_hash
+                    """, (pattern_hash,))
+            
+            patterns_processed += 1
+            
+            # Commit in batches to avoid long transactions
+            if patterns_processed % 500 == 0:
+                conn.commit()
+                print(f"  Processed {patterns_processed} patterns...")
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        print(f"✓ Trained {tf}: {patterns_added} new, {patterns_updated} updated patterns (lookback={look_back})")
+        trained += 1
+        total_patterns_added += patterns_added
+        total_patterns_updated += patterns_updated
+    
+    return jsonify({
+        "success": True, 
+        "message": f"Trained {trained}/{len(timeframes)} timeframes for {symbol}",
+        "look_back": look_back,
+        "patterns_added": total_patterns_added,
+        "patterns_updated": total_patterns_updated
+    })
+
+@app.route("/predict_candle", methods=["POST"])
+def predict_candle():
+    payload = request.get_json() or {}
+    symbol = payload.get("symbol", "BTC/USDT").upper()
+    timeframe = payload.get("timeframe", "4h")
+    look_back = int(payload.get("look_back", 50))
+    expander = float(payload.get("expander", 1.33))
+    similarity_threshold = float(payload.get("similarity_threshold", 0.5))  # Increased default
+    max_matches = int(payload.get("max_matches", 100))
+    
+    # Dynamic threshold adjustment based on lookback
+    if look_back > 100:
+        similarity_threshold = max(similarity_threshold, 0.3)
+        if look_back > 500:
+            similarity_threshold = max(similarity_threshold, 0.5)
+        if look_back > 1000:
+            similarity_threshold = max(similarity_threshold, 1.0)
+    
+    # Get latest look_back +1 candles from DB
+    conn = get_conn()
+    cur = conn.cursor(dictionary=True)
+    cur.execute("""
+        SELECT time_utc, close, high, low
+        FROM ohlcv_data
+        WHERE symbol = %s AND timeframe = %s
+        ORDER BY time_utc DESC
+        LIMIT %s
+    """, (symbol, timeframe, look_back + 1))
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    
+    if len(rows) < look_back + 1:
+        return jsonify({"success": False, "error": f"Not enough recent data: {len(rows)} rows, need {look_back + 1}. Please fetch data first from OHLCV tab."})
+    
+    # Convert to DataFrame with proper column names
+    df_recent = pd.DataFrame(rows)
+    df_recent['close'] = df_recent['close'].astype(float)
+    df_recent['high'] = df_recent['high'].astype(float)
+    df_recent['low'] = df_recent['low'].astype(float)
+    
+    # Compute current pattern (last look_back triplets)
+    current_triplets = []
+    for i in range(1, len(df_recent)):
+        prev_close = df_recent.iloc[i-1]['close']
+        # Create a row-like dict for compute_triplet
+        row = {
+            'Close': df_recent.iloc[i]['close'],
+            'High': df_recent.iloc[i]['high'],
+            'Low': df_recent.iloc[i]['low']
+        }
+        triplet = compute_triplet(row, prev_close)
+        current_triplets.append(triplet)
+    
+    if len(current_triplets) < look_back:
+        return jsonify({"success": False, "error": f"Not enough triplets: {len(current_triplets)}, need {look_back}"})
+    
+    current_pattern = current_triplets[-look_back:]
+    
+    # Check if pattern table exists
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(f"SHOW TABLES LIKE 'patterns_{timeframe}'")
+    if not cur.fetchone():
+        cur.close()
+        conn.close()
+        return jsonify({"success": False, "error": f"Pattern table for {timeframe} doesn't exist. Train the model first."})
+    cur.close()
+    conn.close()
+    
+    # Fetch historical patterns
+    conn = get_conn()
+    cur = conn.cursor(dictionary=True)
+    cur.execute(f"""
+        SELECT pattern_hash, pattern_string, outcomes, occurrences
+        FROM patterns_{timeframe}
+        ORDER BY occurrences DESC
+        LIMIT %s
+    """, (max_matches * 10,))
+    hist_patterns = cur.fetchall()
+    cur.close()
+    conn.close()
+    
+    if not hist_patterns:
+        return jsonify({"success": False, "error": "No historical patterns found. Train the model first."})
+    
+    # Find similar patterns using fuzzy matching
+    matches = find_similar_patterns_fuzzy(
+        current_pattern, 
+        hist_patterns, 
+        timeframe, 
+        max_matches, 
+        similarity_threshold
+    )
+    
+    if not matches:
+        # Try with even higher threshold for very long patterns
+        if look_back > 500:
+            matches = find_similar_patterns_fuzzy(
+                current_pattern, 
+                hist_patterns, 
+                timeframe, 
+                max_matches, 
+                similarity_threshold * 2
+            )
+        
+        if not matches:
+            return jsonify({
+                "success": False, 
+                "error": f"No matching patterns found. Try: 1) Smaller lookback, 2) Higher similarity threshold, 3) More training data",
+                "current_lookback": look_back,
+                "similarity_threshold_tried": similarity_threshold,
+                "total_patterns_in_db": len(hist_patterns)
+            })
+    
+    # Weighted average next moves
+    total_weight = 0
+    weighted_close = 0
+    weighted_high = 0
+    weighted_low = 0
+    
+    for m in matches:
+        # Weight based on similarity (closer distance = higher weight)
+        similarity_weight = 1.0 / (1.0 + m['dist'])
+        
+        # Combine with pattern-specific weights
+        pattern_weight = min(m['weights']['close'], m['weights']['high'], m['weights']['low'])
+        
+        # Total weight for this match
+        match_weight = similarity_weight * pattern_weight * m['occurrences']
+        
+        # Average outcomes for this pattern
+        avg_close = sum(o[0] for o in m['outcomes']) / len(m['outcomes'])
+        avg_high = sum(o[1] for o in m['outcomes']) / len(m['outcomes'])
+        avg_low = sum(o[2] for o in m['outcomes']) / len(m['outcomes'])
+        
+        weighted_close += avg_close * match_weight
+        weighted_high += avg_high * match_weight
+        weighted_low += avg_low * match_weight
+        total_weight += match_weight
+    
+    if total_weight == 0:
+        total_weight = 1  # avoid div0
+    
+    pct_close = weighted_close / total_weight
+    pct_high = weighted_high / total_weight
+    pct_low = weighted_low / total_weight
+    
+    # Expand bounds
+    close_low = pct_close / expander
+    close_high = pct_close * expander
+    high_low = pct_high / expander
+    high_high = pct_high * expander
+    low_low = pct_low / expander
+    low_high = pct_low * expander
+    
+    # Calculate confidence
+    perfect_count = 0
+    total_outcomes = 0
+    for m in matches:
+        for o in m['outcomes']:
+            if (close_low <= o[0] <= close_high and 
+                high_low <= o[1] <= high_high and 
+                low_low <= o[2] <= low_high):
+                perfect_count += 1
+            total_outcomes += 1
+    
+    confidence = (perfect_count / total_outcomes * 100) if total_outcomes > 0 else 0
+    
+    return jsonify({
+        "success": True,
+        "prediction": {
+            "pct_close": round(pct_close, 2),
+            "close_low": round(close_low, 2),
+            "close_high": round(close_high, 2),
+            "pct_high": round(pct_high, 2),
+            "high_low": round(high_low, 2),
+            "high_high": round(high_high, 2),
+            "pct_low": round(pct_low, 2),
+            "low_low": round(low_low, 2),
+            "low_high": round(low_high, 2),
+            "confidence": round(confidence, 2),
+            "matches": len(matches),
+            "total_patterns_checked": len(hist_patterns),
+            "similarity_threshold_used": similarity_threshold,
+            "current_lookback": look_back
+        }
+    })
+
+@app.route("/predict_candle_flexible", methods=["POST"])
+def predict_candle_flexible():
+    """Flexible prediction that tries multiple lookback lengths"""
+    payload = request.get_json() or {}
+    symbol = payload.get("symbol", "BTC/USDT").upper()
+    timeframe = payload.get("timeframe", "4h")
+    expander = float(payload.get("expander", 1.33))
+    
+    # Try different lookback values in order
+    lookback_options = [50, 100, 200, 500, 1000, 2000, 3000]
+    similarity_thresholds = [0.1, 0.2, 0.3, 0.5, 1.0, 1.5, 2.0]
+    
+    results = []
+    
+    for look_back, threshold in zip(lookback_options, similarity_thresholds):
+        try:
+            # Get data for this lookback
+            conn = get_conn()
+            cur = conn.cursor(dictionary=True)
+            cur.execute("""
+                SELECT time_utc, close, high, low
+                FROM ohlcv_data
+                WHERE symbol = %s AND timeframe = %s
+                ORDER BY time_utc DESC
+                LIMIT %s
+            """, (symbol, timeframe, look_back + 1))
+            rows = cur.fetchall()
+            cur.close()
+            conn.close()
+            
+            if len(rows) < look_back + 1:
+                continue
+            
+            # Compute pattern
+            df_recent = pd.DataFrame(rows)
+            df_recent['close'] = df_recent['close'].astype(float)
+            df_recent['high'] = df_recent['high'].astype(float)
+            df_recent['low'] = df_recent['low'].astype(float)
+            
+            current_triplets = []
+            for i in range(1, len(df_recent)):
+                prev_close = df_recent.iloc[i-1]['close']
+                row = {
+                    'Close': df_recent.iloc[i]['close'],
+                    'High': df_recent.iloc[i]['high'],
+                    'Low': df_recent.iloc[i]['low']
+                }
+                triplet = compute_triplet(row, prev_close)
+                current_triplets.append(triplet)
+            
+            if len(current_triplets) < look_back:
+                continue
+            
+            current_pattern = current_triplets[-look_back:]
+            
+            # Check if pattern table exists
+            conn = get_conn()
+            cur = conn.cursor()
+            cur.execute(f"SHOW TABLES LIKE 'patterns_{timeframe}'")
+            if not cur.fetchone():
+                cur.close()
+                conn.close()
+                continue
+            cur.close()
+            conn.close()
+            
+            # Fetch historical patterns
+            conn = get_conn()
+            cur = conn.cursor(dictionary=True)
+            cur.execute(f"""
+                SELECT pattern_hash, pattern_string, outcomes, occurrences
+                FROM patterns_{timeframe}
+                ORDER BY occurrences DESC
+                LIMIT 1000
+            """)
+            hist_patterns = cur.fetchall()
+            cur.close()
+            conn.close()
+            
+            if not hist_patterns:
+                continue
+            
+            # Find similar patterns
+            matches = find_similar_patterns_fuzzy(
+                current_pattern, 
+                hist_patterns, 
+                timeframe, 
+                50, 
+                threshold
+            )
+            
+            if matches and len(matches) >= 3:
+                # Calculate prediction
+                total_weight = 0
+                weighted_close = 0
+                weighted_high = 0
+                weighted_low = 0
+                
+                for m in matches:
+                    similarity_weight = 1.0 / (1.0 + m['dist'])
+                    pattern_weight = min(m['weights']['close'], m['weights']['high'], m['weights']['low'])
+                    match_weight = similarity_weight * pattern_weight * m['occurrences']
+                    
+                    avg_close = sum(o[0] for o in m['outcomes']) / len(m['outcomes'])
+                    avg_high = sum(o[1] for o in m['outcomes']) / len(m['outcomes'])
+                    avg_low = sum(o[2] for o in m['outcomes']) / len(m['outcomes'])
+                    
+                    weighted_close += avg_close * match_weight
+                    weighted_high += avg_high * match_weight
+                    weighted_low += avg_low * match_weight
+                    total_weight += match_weight
+                
+                if total_weight > 0:
+                    pct_close = weighted_close / total_weight
+                    pct_high = weighted_high / total_weight
+                    pct_low = weighted_low / total_weight
+                    
+                    results.append({
+                        "lookback": look_back,
+                        "matches": len(matches),
+                        "threshold": threshold,
+                        "pct_close": round(pct_close, 2),
+                        "pct_high": round(pct_high, 2),
+                        "pct_low": round(pct_low, 2)
+                    })
+                
+                if len(results) >= 3:
+                    break
+        
+        except Exception as e:
+            print(f"Error trying lookback {look_back}: {e}")
+            continue
+    
+    if not results:
+        return jsonify({"success": False, "error": "No matches found with any lookback length"})
+    
+    # Average the results
+    avg_close = sum(r["pct_close"] for r in results) / len(results)
+    avg_high = sum(r["pct_high"] for r in results) / len(results)
+    avg_low = sum(r["pct_low"] for r in results) / len(results)
+    
+    return jsonify({
+        "success": True,
+        "prediction": {
+            "pct_close": round(avg_close, 2),
+            "pct_high": round(avg_high, 2),
+            "pct_low": round(avg_low, 2),
+            "confidence": round((len(results) / 7) * 100, 2),  # 7 is total lookback options
+            "lookbacks_used": [r["lookback"] for r in results],
+            "matches_per_lookback": [r["matches"] for r in results],
+            "total_results": len(results)
+        }
+    })
+
+@app.route("/debug_patterns", methods=["POST"])
+def debug_patterns():
+    """Debug endpoint to see pattern matching issues"""
+    payload = request.get_json() or {}
+    symbol = payload.get("symbol", "BTC/USDT").upper()
+    timeframe = payload.get("timeframe", "4h")
+    look_back = int(payload.get("look_back", 50))
+    
+    # Get current pattern
+    conn = get_conn()
+    cur = conn.cursor(dictionary=True)
+    cur.execute("""
+        SELECT close, high, low
+        FROM ohlcv_data
+        WHERE symbol = %s AND timeframe = %s
+        ORDER BY time_utc DESC
+        LIMIT %s
+    """, (symbol, timeframe, look_back + 1))
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    
+    if len(rows) < look_back + 1:
+        return jsonify({"success": False, "error": f"Not enough data for debug: {len(rows)} rows"})
+    
+    # Compute current pattern
+    df_recent = pd.DataFrame(rows)
+    df_recent['close'] = df_recent['close'].astype(float)
+    df_recent['high'] = df_recent['high'].astype(float)
+    df_recent['low'] = df_recent['low'].astype(float)
+    
+    current_triplets = []
+    for i in range(1, len(df_recent)):
+        prev_close = df_recent.iloc[i-1]['close']
+        row = {
+            'Close': df_recent.iloc[i]['close'],
+            'High': df_recent.iloc[i]['high'],
+            'Low': df_recent.iloc[i]['low']
+        }
+        triplet = compute_triplet(row, prev_close)
+        current_triplets.append(triplet)
+    
+    if len(current_triplets) < look_back:
+        return jsonify({"success": False, "error": "Not enough triplets"})
+    
+    current_pattern = current_triplets[-look_back:]
+    
+    # Check database
+    conn = get_conn()
+    cur = conn.cursor(dictionary=True)
+    
+    # Count patterns
+    cur.execute(f"SELECT COUNT(*) as count FROM patterns_{timeframe}")
+    pattern_count = cur.fetchone()['count']
+    
+    # Get sample patterns
+    cur.execute(f"""
+        SELECT pattern_string, outcomes, occurrences 
+        FROM patterns_{timeframe} 
+        ORDER BY occurrences DESC 
+        LIMIT 5
+    """)
+    sample_patterns = cur.fetchall()
+    
+    # Get weight counts
+    weight_counts = {}
+    for pred_type in ['close', 'high', 'low']:
+        cur.execute(f"SELECT COUNT(*) as count FROM weights_{pred_type}_{timeframe}")
+        weight_counts[pred_type] = cur.fetchone()['count']
+    
+    cur.close()
+    conn.close()
+    
+    # Analyze current pattern
+    avg_close = sum(t[0] for t in current_pattern) / len(current_pattern)
+    avg_high = sum(t[1] for t in current_pattern) / len(current_pattern)
+    avg_low = sum(t[2] for t in current_pattern) / len(current_pattern)
+    
+    return jsonify({
+        "success": True,
+        "symbol": symbol,
+        "timeframe": timeframe,
+        "lookback_requested": look_back,
+        "current_pattern_stats": {
+            "length": len(current_pattern),
+            "avg_pct_close": round(avg_close, 4),
+            "avg_pct_high": round(avg_high, 4),
+            "avg_pct_low": round(avg_low, 4),
+            "min_pct_close": round(min(t[0] for t in current_pattern), 4),
+            "max_pct_close": round(max(t[0] for t in current_pattern), 4),
+            "first_3_triplets": current_pattern[:3],
+            "last_3_triplets": current_pattern[-3:]
+        },
+        "database_stats": {
+            "total_patterns": pattern_count,
+            "weights_close": weight_counts['close'],
+            "weights_high": weight_counts['high'],
+            "weights_low": weight_counts['low']
+        },
+        "sample_patterns": [
+            {
+                "length": len(string_to_pattern(p['pattern_string'])),
+                "occurrences": p['occurrences'],
+                "avg_pct_close": round(sum(t[0] for t in string_to_pattern(p['pattern_string'])) / len(string_to_pattern(p['pattern_string'])), 4),
+                "first_3_triplets": string_to_pattern(p['pattern_string'])[:3] if string_to_pattern(p['pattern_string']) else []
+            }
+            for p in sample_patterns
+        ]
+    })
+# Removed Kucoin from code  ("kucoin", kucoin_ws),
+# ========= REAL-TIME WEBSOCKETS =========
+def close_websockets():
+    """Close all WebSocket connections"""
+    global binance_ws, bybit_ws, okx_ws, gateio_ws,  huobi_ws, kraken_ws, bitget_ws, mexc_ws, coinbase_ws
+    
+    websockets_to_close = [
+        ("binance", binance_ws),
+        ("bybit", bybit_ws),
+        ("okx", okx_ws),
+        ("gateio", gateio_ws),
+        #("kucoin", kucoin_ws),
+        ("huobi", huobi_ws),
+        ("kraken", kraken_ws),
+        ("bitget", bitget_ws),
+        ("mexc", mexc_ws),
+        ("coinbase", coinbase_ws)
+    ]
+    
+    for name, ws in websockets_to_close:
+        if ws:
+            try:
+                ws.close()
+                print(f"Closed {name} WebSocket")
+            except Exception as e:
+                print(f"Error closing {name} WebSocket: {e}")
+    # Removed Kucoin from code kucoin_ws = 
+    # Clear all WebSocket references
+    binance_ws = bybit_ws = okx_ws = gateio_ws = huobi_ws = kraken_ws = bitget_ws = mexc_ws = coinbase_ws = None
+    
+    # Small delay to ensure WebSockets are properly closed
+    time.sleep(0.5)
+# Removed Kucoin from code kucoin_ws,
+def start_websockets():
+    """Start WebSocket connections for current symbol and market type (spot/future)"""
+    global binance_ws, bybit_ws, okx_ws, gateio_ws, huobi_ws, kraken_ws, bitget_ws, mexc_ws, coinbase_ws
+    
+    # Ensure old WebSockets are closed
+    close_websockets()
+    
+    symbol = real_time_data["current_symbol"]
+    market_type = real_time_data.get("market_type", "spot")
+    print(f"Starting WebSockets for symbol: {symbol} (market: {market_type})")
+    
+    # Convert symbol for each exchange
+    # Removed KuCoin From Code 
+    binance_pair = symbol.replace('/', '').lower()
+    bybit_pair = symbol.replace('/', '').upper()
+    okx_pair = symbol.replace('/', '-').upper()
+    gateio_pair = symbol.replace('/', '_').upper()
+    #kucoin_pair = symbol.replace('/', '-').upper()
+    huobi_pair = symbol.replace('/', '').lower()
+    kraken_pair = symbol.replace('/', '').upper()  # Note: Kraken uses different pairs for some coins
+    bitget_pair = symbol.replace('/', '').upper()
+    mexc_pair = symbol.replace('/', '_').upper()
+    coinbase_pair = symbol.replace('/', '-').upper()
+
+    def ws_thread(exchange_name, url, on_open=None, on_message=None):
+        """WebSocket thread with symbol verification"""
+        thread_symbol = real_time_data["current_symbol"]  # Capture symbol for this thread
+        
+        while True:
+            try:
+                # Check if symbol has changed (thread should exit)
+                if real_time_data["current_symbol"] != thread_symbol or real_time_data.get("market_type") != market_type:
+                    print(f"Symbol/type changed from {thread_symbol}/{market_type} to {real_time_data['current_symbol']}/{real_time_data.get('market_type')}. Stopping {exchange_name} WebSocket thread.")
+                    break
+                
+                print(f"Starting {exchange_name} WebSocket for {thread_symbol} ({market_type})...")
+                
+                # Create WebSocket
+                ws = websocket.WebSocketApp(
+                    url,
+                    on_open=on_open,
+                    on_message=on_message,
+                    on_error=lambda ws, error: print(f"{exchange_name} WebSocket error: {error}"),
+                    on_close=lambda ws, close_status_code, close_msg: print(f"{exchange_name} WebSocket closed: {close_msg}")
+                )
+                
+                # Assign to correct global variable
+                if exchange_name == 'binance':
+                    global binance_ws
+                    binance_ws = ws
+                elif exchange_name == 'bybit':
+                    global bybit_ws
+                    bybit_ws = ws
+                elif exchange_name == 'okx':
+                    global okx_ws
+                    okx_ws = ws
+                elif exchange_name == 'gateio':
+                    global gateio_ws
+                    gateio_ws = ws
+                #elif exchange_name == 'kucoin':
+                    #global kucoin_ws
+                    #kucoin_ws = ws
+                elif exchange_name == 'huobi':
+                    global huobi_ws
+                    huobi_ws = ws
+                elif exchange_name == 'kraken':
+                    global kraken_ws
+                    kraken_ws = ws
+                elif exchange_name == 'bitget':
+                    global bitget_ws
+                    bitget_ws = ws
+                elif exchange_name == 'mexc':
+                    global mexc_ws
+                    mexc_ws = ws
+                elif exchange_name == 'coinbase':
+                    global coinbase_ws
+                    coinbase_ws = ws
+                
+                # Run WebSocket
+                ws.run_forever(ping_interval=20, ping_timeout=10)
+                
+            except Exception as e:
+                print(f"{exchange_name} WS connection error: {e}")
+                
+                # Check if symbol has changed while reconnecting
+                if real_time_data["current_symbol"] != thread_symbol or real_time_data.get("market_type") != market_type:
+                    print(f"Symbol/type changed from {thread_symbol}/{market_type} to {real_time_data['current_symbol']}/{real_time_data.get('market_type')}. Stopping {exchange_name} WebSocket thread.")
+                    break
+                    
+                time.sleep(5)  # Wait before reconnecting
+
+    # Start WebSocket threads for all exchanges
+    # Binance
+    if market_type == 'spot':
+        binance_url = f"wss://stream.binance.com:9443/stream?streams={binance_pair}@depth20@100ms/{binance_pair}@trade"
+    else:
+        # Binance futures
+        binance_url = f"wss://fstream.binance.com/stream?streams={binance_pair}@depth20@100ms/{binance_pair}@aggTrade"
+    threading.Thread(target=ws_thread, args=('binance', binance_url, None, on_message_binance), daemon=True).start()
+    
+    # Bybit
+    if market_type == 'spot':
+        bybit_url = "wss://stream.bybit.com/v5/public/spot"
+    else:
+        bybit_url = "wss://stream.bybit.com/v5/public/linear"
+    def bybit_open(ws):
+        subscribe_msg = {
+            "op": "subscribe",
+            "args": [
+                f"orderbook.50.{bybit_pair}",
+                f"publicTrade.{bybit_pair}"
+            ]
+        }
+        ws.send(json.dumps(subscribe_msg))
+        print(f"Bybit subscribed to {bybit_pair} ({market_type})")
+    threading.Thread(target=ws_thread, args=('bybit', bybit_url, bybit_open, on_message_bybit), daemon=True).start()
+    
+    # OKX
+    if market_type == 'spot':
+        okx_url = "wss://ws.okx.com:8443/ws/v5/public"
+        inst_type = "SPOT"
+    else:
+        okx_url = "wss://ws.okx.com:8443/ws/v5/public"  # same URL, different channel
+        inst_type = "SWAP"
+    def okx_open(ws):
+        ws.send(json.dumps({"op": "subscribe", "args": [
+            {"channel": "books5", "instId": okx_pair, "instType": inst_type},
+            {"channel": "trades", "instId": okx_pair, "instType": inst_type}
+        ]}))
+        print(f"OKX subscribed to {okx_pair} ({market_type})")
+    threading.Thread(target=ws_thread, args=('okx', okx_url, okx_open, on_message_okx), daemon=True).start()
+    
+    # Gate.io (spot only)
+    gateio_url = "wss://api.gateio.ws/ws/v4/"
+    def gateio_open(ws):
+        timestamp = int(time.time())
+        # Subscribe to order book
+        orderbook_sub = {
+            "time": timestamp,
+            "channel": "spot.order_book",
+            "event": "subscribe",
+            "payload": [gateio_pair, "20", "100ms"]
+        }
+        ws.send(json.dumps(orderbook_sub))
+        
+        # Subscribe to trades
+        trades_sub = {
+            "time": timestamp,
+            "channel": "spot.trades",
+            "event": "subscribe",
+            "payload": [gateio_pair]
+        }
+        ws.send(json.dumps(trades_sub))
+        print(f"Gate.io subscribed to {gateio_pair}")
+    threading.Thread(target=ws_thread, args=('gateio', gateio_url, gateio_open, on_message_gateio), daemon=True).start()
+    
+    # KuCoin Removed from Code
+    #kucoin_url = "wss://ws-api.kucoin.com/endpoint"
+    #def kucoin_open(ws):
+        # Subscribe to order book
+     #   orderbook_sub = {
+            #"type": "subscribe",
+            #"topic": f"/market/level2:{kucoin_pair}",
+            #"privateChannel": False,
+            #"response": True
+        #}
+        #ws.send(json.dumps(orderbook_sub))
+        
+        # Subscribe to trades
+        #trades_sub = {
+         #   "type": "subscribe",
+         #   "topic": f"/market/trade:{kucoin_pair}",
+         #   "privateChannel": False,
+          #  "response": True
+        #}
+        #ws.send(json.dumps(trades_sub))
+        #print(f"KuCoin subscribed to {kucoin_pair}")
+    #threading.Thread(target=ws_thread, args=('kucoin', kucoin_url, kucoin_open, on_message_kucoin), daemon=True).start()
+    
+    # Huobi (spot only)
+    huobi_url = "wss://api.huobi.pro/ws"
+    def huobi_open(ws):
+        # Subscribe to order book
+        orderbook_sub = {
+            "sub": f"market.{huobi_pair}.depth.step0",
+            "id": "id1"
+        }
+        ws.send(json.dumps(orderbook_sub))
+        
+        # Subscribe to trades
+        trades_sub = {
+            "sub": f"market.{huobi_pair}.trade.detail",
+            "id": "id2"
+        }
+        ws.send(json.dumps(trades_sub))
+        print(f"Huobi subscribed to {huobi_pair}")
+    threading.Thread(target=ws_thread, args=('huobi', huobi_url, huobi_open, on_message_huobi), daemon=True).start()
+    
+    # Kraken (spot only)
+    kraken_url = "wss://ws.kraken.com"
+    def kraken_open(ws):
+        # Subscribe to order book
+        orderbook_sub = {
+            "event": "subscribe",
+            "pair": [kraken_pair],
+            "subscription": {"name": "book", "depth": 25}
+        }
+        ws.send(json.dumps(orderbook_sub))
+        
+        # Subscribe to trades
+        trades_sub = {
+            "event": "subscribe",
+            "pair": [kraken_pair],
+            "subscription": {"name": "trade"}
+        }
+        ws.send(json.dumps(trades_sub))
+        print(f"Kraken subscribed to {kraken_pair}")
+    threading.Thread(target=ws_thread, args=('kraken', kraken_url, kraken_open, on_message_kraken), daemon=True).start()
+    
+    # Bitget (spot only)
+    bitget_url = "wss://ws.bitget.com/v2/ws/public"
+    def bitget_open(ws):
+        # Subscribe to order book
+        orderbook_sub = {
+            "op": "subscribe",
+            "args": [{
+                "instType": "SPOT",
+                "channel": "books",
+                "instId": bitget_pair
+            }]
+        }
+        ws.send(json.dumps(orderbook_sub))
+        
+        # Subscribe to trades
+        trades_sub = {
+            "op": "subscribe",
+            "args": [{
+                "instType": "SPOT",
+                "channel": "trade",
+                "instId": bitget_pair
+            }]
+        }
+        ws.send(json.dumps(trades_sub))
+        print(f"Bitget subscribed to {bitget_pair}")
+    threading.Thread(target=ws_thread, args=('bitget', bitget_url, bitget_open, on_message_bitget), daemon=True).start()
+    
+    # MEXC (spot only)
+    mexc_url = "wss://wbs.mexc.com/ws"
+    def mexc_open(ws):
+        # Subscribe to order book
+        orderbook_sub = {
+            "method": "SUBSCRIPTION",
+            "params": [f"spot@public.miniTicker.v3.api@{mexc_pair}"]
+        }
+        ws.send(json.dumps(orderbook_sub))
+        
+        # Subscribe to trades
+        trades_sub = {
+            "method": "SUBSCRIPTION",
+            "params": [f"spot@public.deals.v3.api@{mexc_pair}"]
+        }
+        ws.send(json.dumps(trades_sub))
+        print(f"MEXC subscribed to {mexc_pair}")
+    threading.Thread(target=ws_thread, args=('mexc', mexc_url, mexc_open, on_message_mexc), daemon=True).start()
+    
+    # Coinbase (spot only)
+    coinbase_url = "wss://ws-feed.exchange.coinbase.com"
+    def coinbase_open(ws):
+        subscribe_msg = {
+            "type": "subscribe",
+            "product_ids": [coinbase_pair],
+            "channels": ["level2", "ticker", "matches"]
+        }
+        ws.send(json.dumps(subscribe_msg))
+        print(f"Coinbase subscribed to {coinbase_pair}")
+    threading.Thread(target=ws_thread, args=('coinbase', coinbase_url, coinbase_open, on_message_coinbase), daemon=True).start()
+    
+    print(f"✅ All 10 exchange WebSockets started for {symbol} ({market_type})")
+
+def on_message_binance(ws, message):
+    try:
+        # Get current market type from global data
+        current_symbol = real_time_data["current_symbol"].replace('/', '')
+        market_type = real_time_data.get("market_type", "spot")
+        data = json.loads(message)
+        
+        if 'stream' in data:
+            stream_name = data['stream']
+            if current_symbol.lower() not in stream_name:
+                return
+            
+            # Depth updates
+            if data['stream'].endswith('@depth20@100ms'):
+                book = data['data']
+                if market_type == 'spot':
+                    bids = book.get('bids', [])
+                    asks = book.get('asks', [])
+                else:  # futures uses 'b' and 'a'
+                    bids = book.get('b', [])
+                    asks = book.get('a', [])
+                update_order_book("binance", bids, asks)
+            
+            # Trade updates (spot or futures)
+            elif data['stream'].endswith('@trade') or data['stream'].endswith('@aggTrade'):
+                trade = data['data']
+                # Both spot and futures use same fields: p, q, T, m
+                side = 'b' if not trade.get('m', False) else 's'
+                process_trade("binance", {
+                    "price": float(trade['p']),
+                    "volume": float(trade['q']),
+                    "timestamp": trade['T'] / 1000,
+                    "side": side
+                })
+    except Exception as e:
+        print(f"Binance message error: {e}")
+        # Optional: print part of the problematic message for debugging
+        try:
+            print(f"Problem message: {message[:200]}")
+        except:
+            pass
+
+def on_message_bybit(ws, message):
+    try:
+        # Verify we're still tracking the right symbol
+        current_symbol = real_time_data["current_symbol"].replace('/', '')
+        data = json.loads(message)
+        
+        # Check for successful subscription
+        if 'success' in data and data['success']:
+            print(f"Bybit subscription success: {data.get('ret_msg', '')}")
+            return
+        
+        if 'topic' in data:
+            topic = data['topic']
+            
+            # Only process if this is for our current symbol
+            if current_symbol.upper() not in topic:
+                return  # Skip messages for other symbols
+            
+            # Order book updates
+            if 'orderbook.50.' in topic:
+                book_data = data.get('data', {})
+                if 'b' in book_data and 'a' in book_data:
+                    bids = book_data.get('b', [])
+                    asks = book_data.get('a', [])
+                    update_order_book("bybit", bids, asks)
+            
+            # Trade updates
+            elif 'publicTrade.' in topic:
+                trades = data.get('data', [])
+                if isinstance(trades, list):
+                    for t in trades:
+                        # Bybit V5 uses different field names
+                        side = 'b' if t.get('S') == 'Buy' else 's'
+                        price = t.get('p')
+                        volume = t.get('v')
+                        timestamp = t.get('T', time.time() * 1000) / 1000  # Convert ms to seconds
+                        
+                        if price and volume:
+                            process_trade("bybit", {
+                                "price": float(price),
+                                "volume": float(volume),
+                                "timestamp": timestamp,
+                                "side": side
+                            })
+    except Exception as e:
+        print(f"Bybit message error: {e}")
+
+def on_message_okx(ws, message):
+    try:
+        # Verify we're still tracking the right symbol
+        current_symbol = real_time_data["current_symbol"].replace('/', '-')
+        data = json.loads(message)
+        
+        # Handle pong response for ping
+        if data.get('event') == 'subscribe':
+            print(f"OKX subscription success: {data.get('arg', {}).get('channel')}")
+            return
+        
+        if 'arg' in data and 'data' in data:
+            channel = data['arg']['channel']
+            inst_id = data['arg'].get('instId', '')
+            
+            # Only process if this is for our current symbol
+            if current_symbol.upper() not in inst_id:
+                return  # Skip messages for other symbols
+            
+            if channel == 'books5':
+                book = data['data'][0]
+                bids = book.get('bids', [])
+                asks = book.get('asks', [])
+                update_order_book("okx", bids, asks)
+                
+            elif channel == 'trades':
+                for t in data['data']:
+                    side = 'b' if t.get('side') == 'buy' else 's'
+                    price = t.get('px')
+                    volume = t.get('sz')
+                    timestamp = int(t.get('ts', time.time() * 1000000)) / 1000000  # Convert to seconds
+                    
+                    if price and volume:
+                        process_trade("okx", {
+                            "price": float(price),
+                            "volume": float(volume),
+                            "timestamp": timestamp,
+                            "side": side
+                        })
+    except Exception as e:
+        print(f"OKX message error: {e}")
+
+def on_message_gateio(ws, message):
+    try:
+        # Verify we're still tracking the right symbol
+        current_symbol = real_time_data["current_symbol"].replace('/', '_')
+        data = json.loads(message)
+        
+        # Handle subscription response
+        if data.get('event') == 'subscribe':
+            print(f"Gate.io subscription success: {data.get('channel')}")
+            return
+        
+        # Handle order book updates
+        if data.get('channel') == 'spot.order_book' and data.get('event') == 'update':
+            result = data.get('result', {})
+            
+            # Only process if this is for our current symbol
+            channel_symbol = result.get('s', '')
+            if current_symbol.upper() not in channel_symbol:
+                return  # Skip messages for other symbols
+            
+            # Gate.io uses 'bids' and 'asks' (not 'b' and 'a')
+            bids = result.get('bids', [])
+            asks = result.get('asks', [])
+            
+            # Format bids and asks as list of [price, quantity]
+            formatted_bids = []
+            formatted_asks = []
+            
+            if bids and isinstance(bids, list):
+                for bid in bids:
+                    if len(bid) >= 2:
+                        try:
+                            price = float(bid[0]) if isinstance(bid[0], (int, float, str)) else 0
+                            quantity = float(bid[1]) if isinstance(bid[1], (int, float, str)) else 0
+                            if price > 0 and quantity > 0:
+                                formatted_bids.append([price, quantity])
+                        except (ValueError, TypeError):
+                            continue
+            
+            if asks and isinstance(asks, list):
+                for ask in asks:
+                    if len(ask) >= 2:
+                        try:
+                            price = float(ask[0]) if isinstance(ask[0], (int, float, str)) else 0
+                            quantity = float(ask[1]) if isinstance(ask[1], (int, float, str)) else 0
+                            if price > 0 and quantity > 0:
+                                formatted_asks.append([price, quantity])
+                        except (ValueError, TypeError):
+                            continue
+            
+            if formatted_bids or formatted_asks:
+                update_order_book("gateio", formatted_bids, formatted_asks)
+        
+        # Handle trade updates
+        elif data.get('channel') == 'spot.trades' and data.get('event') == 'update':
+            result = data.get('result', {})
+            
+            # Handle both single trade and list of trades
+            trades = []
+            if isinstance(result, dict):
+                trades = [result]
+            elif isinstance(result, list):
+                trades = result
+            
+            for trade in trades:
+                if isinstance(trade, dict):
+                    # Only process if this is for our current symbol
+                    trade_symbol = trade.get('currency_pair', '')
+                    if current_symbol.upper() not in trade_symbol:
+                        continue  # Skip trades for other symbols
+                    
+                    side = 'b' if trade.get('side') == 'buy' else 's'
+                    price = trade.get('price')
+                    amount = trade.get('amount')
+                    
+                    # Handle timestamp - Gate.io uses create_time_ms or create_time
+                    try:
+                        if 'create_time_ms' in trade:
+                            # Convert to float first, then divide
+                            timestamp_ms = float(trade['create_time_ms'])
+                        elif 'create_time' in trade:
+                            # Check if it's already in seconds or milliseconds
+                            create_time = trade['create_time']
+                            if isinstance(create_time, (int, float)):
+                                timestamp_ms = float(create_time)
+                                # If create_time is less than 10000000000, it's likely in seconds
+                                if timestamp_ms < 10000000000:
+                                    timestamp_ms = timestamp_ms * 1000
+                            elif isinstance(create_time, str):
+                                timestamp_ms = float(create_time)
+                                if timestamp_ms < 10000000000:
+                                    timestamp_ms = timestamp_ms * 1000
+                            else:
+                                timestamp_ms = time.time() * 1000
+                        else:
+                            timestamp_ms = time.time() * 1000
+                        
+                        timestamp = timestamp_ms / 1000  # Convert to seconds
+                    except (ValueError, TypeError) as e:
+                        print(f"Gate.io timestamp error: {e}, using current time")
+                        timestamp = time.time()
+                    
+                    if price and amount:
+                        try:
+                            process_trade("gateio", {
+                                "price": float(price),
+                                "volume": float(amount),
+                                "timestamp": timestamp,
+                                "side": side
+                            })
+                        except (ValueError, TypeError) as e:
+                            print(f"Gate.io trade processing error: {e}")
+                        
+    except Exception as e:
+        print(f"Gate.io message error: {e}")
+        # Print the raw message for debugging
+        try:
+            print(f"Raw Gate.io message: {message[:200]}...")
+        except:
+            pass
+# Code Update Fix Start
+# ========= BINANCE ALL PAIRS SCANNER =========
+
+def fetch_all_binance_pairs():
+    """Fetch all Binance spot and futures pairs with recent trading volume."""
+    try:
+        # Initialize Binance exchange for spot
+        binance = ccxt.binance({
+            'enableRateLimit': True,
+            'rateLimit': 1000,
+            'options': {'defaultType': 'spot'}
+        })
+        # For futures
+        binance_futures = ccxt.binance({
+            'enableRateLimit': True,
+            'rateLimit': 1000,
+            'options': {'defaultType': 'future'}
+        })
+
+        all_pairs = []
+
+        # --- Spot markets ---
+        print("Fetching Binance spot markets...")
+        binance.load_markets()
+        spot_markets = binance.markets
+
+        # Fetch tickers for all spot symbols (single request)
+        print("Fetching spot tickers...")
+        spot_tickers = binance.fetch_tickers()
+        active_spot_symbols = set()
+        for symbol, ticker in spot_tickers.items():
+            # Check if the symbol has any trading volume (quoteVolume > 0)
+            if ticker.get('quoteVolume') and ticker['quoteVolume'] > 0:
+                active_spot_symbols.add(symbol)
+
+        print(f"Found {len(active_spot_symbols)} spot symbols with positive 24h volume.")
+
+        for symbol, market in spot_markets.items():
+            if market['active'] and symbol in active_spot_symbols:
+                all_pairs.append({
+                    'symbol': symbol,
+                    'base_asset': market.get('base'),
+                    'quote_asset': market.get('quote'),
+                    'pair_type': 'spot',
+                    'status': 'active'
+                })
+        time.sleep(1)  # rate limit
+
+        # --- Futures markets ---
+        print("Fetching Binance futures markets...")
+        binance_futures.load_markets()
+        futures_markets = binance_futures.markets
+
+        # Fetch tickers for futures
+        print("Fetching futures tickers...")
+        futures_tickers = binance_futures.fetch_tickers()
+        active_futures_symbols = set()
+        for symbol, ticker in futures_tickers.items():
+            # For futures, 'quoteVolume' is not always present; use 'baseVolume' * last price as fallback
+            volume_usd = ticker.get('quoteVolume')
+            if volume_usd is None and ticker.get('baseVolume') and ticker.get('last'):
+                volume_usd = ticker['baseVolume'] * ticker['last']
+            if volume_usd and volume_usd > 0:
+                active_futures_symbols.add(symbol)
+
+        print(f"Found {len(active_futures_symbols)} futures symbols with positive 24h volume.")
+
+        for symbol, market in futures_markets.items():
+            if market['active'] and symbol in active_futures_symbols:
+                all_pairs.append({
+                    'symbol': symbol,
+                    'base_asset': market.get('base'),
+                    'quote_asset': market.get('quote', 'USDT'),
+                    'pair_type': 'future',
+                    'status': 'active'
+                })
+        time.sleep(1)
+
+        # --- Save to database ---
+        if all_pairs:
+            conn = get_conn()
+            cur = conn.cursor()
+
+            # Clear existing data
+            cur.execute("DELETE FROM binance_all_pairs")
+
+            sql = """
+            INSERT INTO binance_all_pairs (symbol, base_asset, quote_asset, pair_type, status)
+            VALUES (%s, %s, %s, %s, %s)
+            ON DUPLICATE KEY UPDATE 
+                base_asset = VALUES(base_asset),
+                quote_asset = VALUES(quote_asset),
+                status = VALUES(status),
+                last_updated = CURRENT_TIMESTAMP
+            """
+
+            rows = [(p['symbol'], p['base_asset'], p['quote_asset'], p['pair_type'], p['status']) 
+                   for p in all_pairs]
+
+            cur.executemany(sql, rows)
+            conn.commit()
+            cur.close()
+            conn.close()
+
+            print(f"Saved {len(all_pairs)} actively traded Binance pairs to database")
+
+        return all_pairs
+
+    except Exception as e:
+        print(f"Error fetching Binance pairs: {e}")
+        import traceback
+        traceback.print_exc()
+        return []
+
+@app.route("/update_binance_pairs", methods=["POST"])
+def update_binance_pairs():
+    """Update all Binance spot and futures pairs"""
+    try:
+        print("Starting Binance pairs update...")
+        pairs = fetch_all_binance_pairs()
+        
+        return jsonify({
+            "success": True,
+            "message": f"Updated {len(pairs)} Binance pairs",
+            "spot_count": len([p for p in pairs if p['pair_type'] == 'spot']),
+            "futures_count": len([p for p in pairs if p['pair_type'] == 'future']),
+            "timestamp": datetime.utcnow().isoformat()
+        })
+        
+    except Exception as e:
+        print(f"Update error: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/get_binance_pairs", methods=["GET"])
+def get_binance_pairs():
+    """Get all Binance pairs from database"""
+    try:
+        pair_type = request.args.get("type", "all")  # all, spot, future
+        status = request.args.get("status", "active")
+        quote_asset = request.args.get("quote", "")  # USDT, BTC, etc
+        limit = int(request.args.get("limit", 1000))
+        
+        conn = get_conn()
+        cur = conn.cursor(dictionary=True)
+        
+        query = "SELECT * FROM binance_all_pairs WHERE 1=1"
+        params = []
+        
+        if pair_type != "all":
+            query += " AND pair_type = %s"
+            params.append(pair_type)
+        
+        if status:
+            query += " AND status = %s"
+            params.append(status)
+        
+        if quote_asset:
+            query += " AND (quote_asset = %s OR symbol LIKE %s)"
+            params.append(quote_asset)
+            params.append(f"%/{quote_asset}")
+        
+        query += " ORDER BY symbol LIMIT %s"
+        params.append(limit)
+        
+        cur.execute(query, params)
+        rows = cur.fetchall()
+        
+        cur.close()
+        conn.close()
+        
+        return jsonify({
+            "success": True,
+            "count": len(rows),
+            "pairs": rows
+        })
+        
+    except Exception as e:
+        print(f"Get pairs error: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/scan_all_pairs", methods=["POST"])
+def scan_all_pairs():
+    """
+    Comprehensive scanner for all Binance pairs with rate limiting
+    """
+    payload = request.get_json() or {}
+    timeframe = payload.get("timeframe", "5m")
+    pair_type = payload.get("pair_type", "spot")  # spot, future, all
+    quote_asset = payload.get("quote_asset", "USDT")
+    max_pairs = int(payload.get("max_pairs", 100))
+    delay_ms = int(payload.get("delay_ms", 100))  # Delay between requests
+    
+    try:
+        # Get pairs from database
+        conn = get_conn()
+        cur = conn.cursor(dictionary=True)
+        
+        query = """
+        SELECT symbol, pair_type, base_asset, quote_asset 
+        FROM binance_all_pairs 
+        WHERE status = 'active'
+        """
+        params = []
+        
+        if pair_type != "all":
+            query += " AND pair_type = %s"
+            params.append(pair_type)
+        
+        if quote_asset:
+            query += " AND (quote_asset = %s OR symbol LIKE %s)"
+            params.append(quote_asset)
+            params.append(f"%/{quote_asset}")
+        
+        query += " ORDER BY RAND() LIMIT %s"
+        params.append(max_pairs)
+        
+        cur.execute(query, params)
+        pairs = cur.fetchall()
+        cur.close()
+        conn.close()
+        
+        if not pairs:
+            return jsonify({
+                "success": False,
+                "error": "No pairs found. Run /update_binance_pairs first."
+            }), 400
+        
+        # Initialize exchange
+        exchange = ccxt.binance({
+            'enableRateLimit': True,
+            'rateLimit': 1000,
+        })
+        
+        results = []
+        volume_alerts = []
+        pattern_alerts = []
+        
+        print(f"Scanning {len(pairs)} pairs with {delay_ms}ms delay...")
+        
+        for i, pair in enumerate(pairs):
+            try:
+                symbol = pair['symbol']
+                pair_type_str = pair['pair_type']
+                
+                # Configure exchange for spot or futures
+                if pair_type_str == 'future':
+                    exchange.options['defaultType'] = 'future'
+                else:
+                    exchange.options['defaultType'] = 'spot'
+                
+                # Fetch OHLCV data
+                ohlcv = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=20)
+                
+                if len(ohlcv) >= 10:
+                    df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+                    
+                    # Calculate volume metrics
+                    recent_volume = df['volume'].tail(5).mean()
+                    previous_volume = df['volume'].iloc[-10:-5].mean()
+                    
+                    if previous_volume > 0:
+                        volume_ratio = recent_volume / previous_volume
+                        
+                        # Detect volume spike
+                        if volume_ratio >= 2.0:  # 200% volume increase
+                            volume_alerts.append({
+                                "symbol": symbol,
+                                "pair_type": pair_type_str,
+                                "volume_ratio": float(volume_ratio),
+                                "current_volume": float(recent_volume),
+                                "previous_volume": float(previous_volume),
+                                "timeframe": timeframe
+                            })
+                        
+                        # Calculate price change
+                        current_price = float(df.iloc[-1]['close'])
+                        prev_price = float(df.iloc[-2]['close'])
+                        price_change = ((current_price - prev_price) / prev_price) * 100
+                        
+                        # Detect simple patterns
+                        pattern = detect_simple_pattern(df)
+                        
+                        if pattern:
+                            pattern_alerts.append({
+                                "symbol": symbol,
+                                "pair_type": pair_type_str,
+                                "pattern": pattern,
+                                "price_change": float(price_change),
+                                "current_price": current_price
+                            })
+                        
+                        results.append({
+                            "symbol": symbol,
+                            "pair_type": pair_type_str,
+                            "current_price": current_price,
+                            "price_change": float(price_change),
+                            "volume_ratio": float(volume_ratio),
+                            "current_volume": float(recent_volume),
+                            "pattern": pattern
+                        })
+                
+                # Rate limiting - delay between requests
+                if i < len(pairs) - 1:
+                    time.sleep(delay_ms / 1000)
+                
+                # Progress update
+                if (i + 1) % 10 == 0:
+                    print(f"  Progress: {i + 1}/{len(pairs)} pairs scanned")
+                
+            except ccxt.RateLimitExceeded:
+                print("Rate limit exceeded, waiting 1 second...")
+                time.sleep(1)
+                continue
+            except ccxt.NetworkError:
+                print(f"Network error for {pair['symbol']}, skipping...")
+                continue
+            except Exception as e:
+                print(f"Error scanning {pair['symbol']}: {str(e)[:100]}")
+                continue
+        
+        # Sort results by volume ratio (highest first)
+        results.sort(key=lambda x: x.get('volume_ratio', 0), reverse=True)
+        
+        return jsonify({
+            "success": True,
+            "scanned_pairs": len(pairs),
+            "successful_scans": len(results),
+            "volume_alerts": len(volume_alerts),
+            "pattern_alerts": len(pattern_alerts),
+            "timeframe": timeframe,
+            "results": results[:50],  # Return top 50
+            "volume_alerts_list": volume_alerts[:20],
+            "pattern_alerts_list": pattern_alerts[:20],
+            "timestamp": datetime.utcnow().isoformat()
+        })
+        
+    except Exception as e:
+        print(f"Scan error: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"success": False, "error": str(e)}), 500
+
+def detect_simple_pattern(df):
+    """Detect simple candle patterns"""
+    if len(df) < 3:
+        return None
+    
+    opens = df['open'].values
+    highs = df['high'].values
+    lows = df['low'].values
+    closes = df['close'].values
+    
+    # Last 3 candles
+    o1, o2, o3 = opens[-3], opens[-2], opens[-1]
+    h1, h2, h3 = highs[-3], highs[-2], highs[-1]
+    l1, l2, l3 = lows[-3], lows[-2], lows[-1]
+    c1, c2, c3 = closes[-3], closes[-2], closes[-1]
+    
+    # Bullish Engulfing
+    if c2 < o2 and c3 > o3 and o3 < c2 and c3 > o2:
+        return "BULLISH_ENGULFING"
+    
+    # Bearish Engulfing
+    if c2 > o2 and c3 < o3 and o3 > c2 and c3 < o2:
+        return "BEARISH_ENGULFING"
+    
+    # Hammer (bullish reversal)
+    body = abs(c3 - o3)
+    lower_shadow = min(o3, c3) - l3
+    upper_shadow = h3 - max(o3, c3)
+    
+    if lower_shadow > body * 2 and upper_shadow < body * 0.1:
+        return "HAMMER"
+    
+    # Shooting Star (bearish reversal)
+    if upper_shadow > body * 2 and lower_shadow < body * 0.1:
+        return "SHOOTING_STAR"
+    
+    # Three White Soldiers
+    if c1 > o1 and c2 > o2 and c3 > o3 and c1 < c2 < c3:
+        return "THREE_WHITE_SOLDIERS"
+    
+    # Three Black Crows
+    if c1 < o1 and c2 < o2 and c3 < o3 and c1 > c2 > c3:
+        return "THREE_BLACK_CROWS"
+    
+    return None
+
+@app.route("/continuous_scan", methods=["POST"])
+def continuous_scan():
+    """
+    Start continuous scanning with configurable parameters
+    """
+    payload = request.get_json() or {}
+    interval_minutes = int(payload.get("interval", 5))
+    max_pairs_per_scan = int(payload.get("max_pairs", 50))
+    quote_asset = payload.get("quote_asset", "USDT")
+    
+    # Store scan configuration (in production, use a proper task queue)
+    global scan_config
+    scan_config = {
+        "active": True,
+        "interval": interval_minutes,
+        "max_pairs": max_pairs_per_scan,
+        "quote_asset": quote_asset,
+        "last_scan": None,
+        "next_scan": datetime.utcnow() + timedelta(minutes=interval_minutes)
+    }
+    
+    # Start background thread for continuous scanning
+    import threading
+    scan_thread = threading.Thread(target=continuous_scan_worker, daemon=True)
+    scan_thread.start()
+    
+    return jsonify({
+        "success": True,
+        "message": f"Continuous scan started. Scanning every {interval_minutes} minutes.",
+        "config": scan_config
+    })
+
+def continuous_scan_worker():
+    """Background worker for continuous scanning"""
+    global scan_config
+    
+    while scan_config.get("active", False):
+        try:
+            # Run scan
+            scan_config["last_scan"] = datetime.utcnow()
+            
+            # Call the scan function
+            # Note: In production, you'd call this properly
+            print(f"Running scheduled scan at {scan_config['last_scan']}")
+            
+            # Wait for next scan
+            next_scan = scan_config["next_scan"]
+            wait_seconds = (next_scan - datetime.utcnow()).total_seconds()
+            
+            if wait_seconds > 0:
+                time.sleep(wait_seconds)
+            
+            # Update next scan time
+            scan_config["next_scan"] = datetime.utcnow() + timedelta(
+                minutes=scan_config["interval"]
+            )
+            
+        except Exception as e:
+            print(f"Continuous scan error: {e}")
+            time.sleep(60)  # Wait a minute on error
+
+@app.route("/stop_continuous_scan", methods=["POST"])
+def stop_continuous_scan():
+    """Stop continuous scanning"""
+    global scan_config
+    scan_config["active"] = False
+    
+    return jsonify({
+        "success": True,
+        "message": "Continuous scan stopped"
+    })
+
+@app.route("/get_scan_status", methods=["GET"])
+def get_scan_status():
+    """Get current scan status"""
+    global scan_config
+    
+    return jsonify({
+        "success": True,
+        "active": scan_config.get("active", False),
+        "config": scan_config
+    })
+
+# Initialize scan config
+scan_config = {
+    "active": False,
+    "interval": 5,
+    "max_pairs": 50,
+    "quote_asset": "USDT",
+    "last_scan": None,
+    "next_scan": None
+}
+
+@app.route("/enhanced_scan_candle_patterns", methods=["POST"])
+def enhanced_scan_candle_patterns():
+    """
+    Enhanced scanner that works with all Binance pairs
+    """
+    payload = request.get_json() or {}
+    timeframe = payload.get("timeframe", "15m")
+    volume_threshold = float(payload.get("volume_threshold", 1.5))
+    min_volume_usd = float(payload.get("min_volume_usd", 100000))
+    max_symbols = int(payload.get("max_symbols", 100))
+    pair_type = payload.get("pair_type", "spot")
+    
+    try:
+        # Get pairs from database
+        conn = get_conn()
+        cur = conn.cursor(dictionary=True)
+        
+        # Get active USDT pairs with estimated volume
+        query = """
+        SELECT DISTINCT b.symbol, b.pair_type, g.volume_24h
+        FROM binance_all_pairs b
+        LEFT JOIN daily_gainers_losers g ON b.symbol = g.symbol AND DATE(g.fetched_at) = CURDATE()
+        WHERE b.status = 'active'
+        AND b.pair_type = %s
+        AND (b.quote_asset = 'USDT' OR b.symbol LIKE '%/USDT')
+        AND (g.volume_24h IS NULL OR g.volume_24h >= %s)
+        ORDER BY COALESCE(g.volume_24h, 0) DESC
+        LIMIT %s
+        """
+        
+        cur.execute(query, (pair_type, min_volume_usd, max_symbols))
+        pairs = cur.fetchall()
+        cur.close()
+        conn.close()
+        
+        if not pairs:
+            # Fallback: get any USDT pairs
+            conn = get_conn()
+            cur = conn.cursor(dictionary=True)
+            cur.execute("""
+                SELECT symbol, pair_type 
+                FROM binance_all_pairs 
+                WHERE status = 'active' 
+                AND pair_type = %s
+                AND (quote_asset = 'USDT' OR symbol LIKE '%/USDT')
+                LIMIT %s
+            """, (pair_type, max_symbols))
+            pairs = cur.fetchall()
+            cur.close()
+            conn.close()
+        
+        results = []
+        
+        # Initialize exchange
+        exchange = ccxt.binance({
+            'enableRateLimit': True,
+            'rateLimit': 1000,
+        })
+        
+        for i, pair in enumerate(pairs):
+            try:
+                symbol = pair['symbol']
+                
+                # Set exchange type
+                exchange.options['defaultType'] = pair['pair_type']
+                
+                # Fetch OHLCV data
+                ohlcv = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=50)
+                
+                if len(ohlcv) >= 20:
+                    df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+                    
+                    # Calculate volume metrics
+                    recent_volume = df['volume'].tail(5).mean()
+                    previous_volume = df['volume'].iloc[-20:-5].mean()
+                    
+                    if previous_volume > 0:
+                        volume_ratio = recent_volume / previous_volume
+                        
+                        if volume_ratio >= volume_threshold:
+                            # Detect patterns
+                            patterns = detect_enhanced_patterns(df)
+                            
+                            # Calculate price metrics
+                            current_price = float(df.iloc[-1]['close'])
+                            prev_close = float(df.iloc[-2]['close'])
+                            price_change = ((current_price - prev_close) / prev_close) * 100
+                            
+                            # Get 24h volume if available
+                            volume_24h = float(pair.get('volume_24h', 0))
+                            
+                            results.append({
+                                "symbol": symbol,
+                                "pair_type": pair['pair_type'],
+                                "current_price": current_price,
+                                "price_change_24h": float(price_change),
+                                "volume_24h": volume_24h,
+                                "volume_ratio": round(volume_ratio, 2),
+                                "volume_spike": volume_ratio >= volume_threshold,
+                                "patterns": patterns,
+                                "timeframe": timeframe,
+                                "timestamp": datetime.utcnow().isoformat()
+                            })
+                    
+                    # Rate limiting
+                    time.sleep(0.1)  # 100ms delay
+                
+            except Exception as e:
+                print(f"Error analyzing {pair['symbol']}: {str(e)[:100]}")
+                continue
+        
+        # Sort by volume ratio
+        results.sort(key=lambda x: x['volume_ratio'], reverse=True)
+        
+        return jsonify({
+            "success": True,
+            "scanned_symbols": len(pairs),
+            "matches": len(results),
+            "timeframe": timeframe,
+            "volume_threshold": volume_threshold,
+            "pair_type": pair_type,
+            "results": results[:50]  # Return top 50
+        })
+        
+    except Exception as e:
+        print(f"Enhanced scan error: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"success": False, "error": str(e)}), 500
+
+def detect_enhanced_patterns(df):
+    """Enhanced pattern detection"""
+    patterns = []
+    
+    if len(df) < 10:
+        return patterns
+    
+    opens = df['open'].values
+    highs = df['high'].values
+    lows = df['low'].values
+    closes = df['close'].values
+    
+    # Check last 5 candles
+    for i in range(max(0, len(df)-5), len(df)-1):
+        # Doji
+        body = abs(closes[i] - opens[i])
+        total_range = highs[i] - lows[i]
+        if total_range > 0 and body / total_range < 0.1:
+            patterns.append("DOJI")
+        
+        # Marubozu
+        if body / total_range > 0.9:
+            if closes[i] > opens[i]:
+                patterns.append("BULLISH_MARUBOZU")
+            else:
+                patterns.append("BEARISH_MARUBOZU")
+        
+        # Spinning Top
+        upper_shadow = highs[i] - max(opens[i], closes[i])
+        lower_shadow = min(opens[i], closes[i]) - lows[i]
+        if body / total_range < 0.3 and upper_shadow > body and lower_shadow > body:
+            patterns.append("SPINNING_TOP")
+    
+    # Remove duplicates
+    return list(set(patterns))[:3]  # Return max 3 unique patterns
+# End
+
+
+def on_message_huobi(ws, message):
+    try:
+        # Huobi sends gzipped data, so we need to decompress it
+        try:
+            # Try to decompress if it's gzipped
+            if isinstance(message, bytes):
+                # Check if it's gzipped by looking for gzip magic number
+                if len(message) > 2 and message[0:2] == b'\x1f\x8b':
+                    message = gzip.decompress(message).decode('utf-8')
+                else:
+                    message = message.decode('utf-8')
+        except:
+            # If decompression fails, try to decode as string
+            if isinstance(message, bytes):
+                message = message.decode('utf-8', errors='ignore')
+        
+        # Verify we're still tracking the right symbol
+        current_symbol = real_time_data["current_symbol"].replace('/', '')
+        
+        # Check for ping response
+        if 'ping' in message:
+            try:
+                data = json.loads(message)
+                pong_msg = {'pong': data['ping']}
+                ws.send(json.dumps(pong_msg))
+                return
+            except:
+                pass
+        
+        try:
+            data = json.loads(message)
+        except json.JSONDecodeError:
+            print(f"Huobi message is not valid JSON: {message[:100]}")
+            return
+        
+        # Only process if this is for our current symbol
+        if 'ch' in data:
+            channel = data['ch']
+            if current_symbol.lower() not in channel:
+                return  # Skip messages for other symbols
+        
+        # Handle order book updates
+        if 'depth.step0' in str(data.get('ch', '')):
+            if 'tick' in data:
+                tick = data['tick']
+                bids = tick.get('bids', [])
+                asks = tick.get('asks', [])
+                update_order_book("huobi", bids, asks)
+        
+        # Handle trade updates
+        elif 'trade.detail' in str(data.get('ch', '')):
+            if 'tick' in data:
+                tick = data['tick']
+                if 'data' in tick:
+                    for trade in tick['data']:
+                        side = 'b' if trade.get('direction') == 'buy' else 's'
+                        price = trade.get('price')
+                        amount = trade.get('amount')
+                        
+                        if price and amount:
+                            process_trade("huobi", {
+                                "price": float(price),
+                                "volume": float(amount),
+                                "timestamp": time.time(),
+                                "side": side
+                            })
+                
+    except Exception as e:
+        print(f"Huobi message error: {e}")
+        # Don't print the full message as it might be binary
+
+def on_message_kraken(ws, message):
+    try:
+        data = json.loads(message)
+        
+        # Check for system status
+        if isinstance(data, list):
+            # Kraken sends arrays for updates
+            channel_name = data[-2] if len(data) > 2 else ''
+            
+            # Check if this is for our symbol
+            if 'book' in str(channel_name) or 'trade' in str(channel_name):
+                # For simplicity, we'll just update with placeholder data
+                # In production, you'd want to parse Kraken's specific format
+                pass
+                
+    except Exception as e:
+        print(f"Kraken message error: {e}")
+
+def on_message_bitget(ws, message):
+    try:
+        data = json.loads(message)
+        
+        # Handle order book updates
+        if data.get('action') == 'snapshot' and data.get('arg', {}).get('channel') == 'books':
+            if 'data' in data:
+                for book_data in data['data']:
+                    bids = book_data.get('bids', [])
+                    asks = book_data.get('asks', [])
+                    update_order_book("bitget", bids, asks)
+        
+        # Handle trade updates - FIXED: Added proper indexing checks
+        elif data.get('action') == 'update' and data.get('arg', {}).get('channel') == 'trade':
+            if 'data' in data:
+                for trade_data in data['data']:
+                    if isinstance(trade_data, list):
+                        for trade in trade_data:
+                            # Check if trade has enough elements
+                            if isinstance(trade, list) and len(trade) >= 3:
+                                side = 'b' if trade[0] == 'buy' else 's'
+                                price = trade[1]
+                                volume = trade[2]
+                                
+                                if price and volume:
+                                    process_trade("bitget", {
+                                        "price": float(price),
+                                        "volume": float(volume),
+                                        "timestamp": time.time(),
+                                        "side": side
+                                    })
+                            elif isinstance(trade, dict):
+                                # Handle dictionary format if present
+                                side = 'b' if trade.get('side') == 'buy' else 's'
+                                price = trade.get('price')
+                                volume = trade.get('size') or trade.get('volume')
+                                
+                                if price and volume:
+                                    process_trade("bitget", {
+                                        "price": float(price),
+                                        "volume": float(volume),
+                                        "timestamp": time.time(),
+                                        "side": side
+                                    })
+                
+    except Exception as e:
+        print(f"Bitget message error: {e}")
+        # Print the raw message for debugging
+        try:
+            print(f"Raw Bitget message: {message[:200]}")
+        except:
+            pass
+
+def on_message_mexc(ws, message):
+    try:
+        data = json.loads(message)
+        
+        # Handle order book updates
+        if 'deals' in str(data.get('c', '')):
+            # Trade updates
+            if 'd' in data:
+                for trade in data['d'].get('deals', []):
+                    side = 'b' if trade.get('S') == 1 else 's'
+                    price = trade.get('p')
+                    volume = trade.get('v')
+                    
+                    if price and volume:
+                        process_trade("mexc", {
+                            "price": float(price),
+                            "volume": float(volume),
+                            "timestamp": time.time(),
+                            "side": side
+                        })
+        
+        # Handle ticker updates (for price)
+        elif 'miniTicker' in str(data.get('c', '')):
+            if 'd' in data:
+                ticker = data['d']
+                price = ticker.get('c')
+                if price:
+                    # Create a synthetic trade for price updates
+                    process_trade("mexc", {
+                        "price": float(price),
+                        "volume": 0.001,
+                        "timestamp": time.time(),
+                        "side": 'b'  # Default to buy
+                    })
+                
+    except Exception as e:
+        print(f"MEXC message error: {e}")
+
+def on_message_coinbase(ws, message):
+    try:
+        data = json.loads(message)
+        
+        # Handle order book updates
+        if data.get('type') == 'l2update':
+            # Level 2 order book update
+            if 'changes' in data:
+                # Coinbase sends incremental updates
+                # For simplicity, we'll just note that we have data
+                if 'product_id' in data:
+                    # Verify symbol
+                    current_symbol = real_time_data["current_symbol"].replace('/', '-')
+                    if data['product_id'] == current_symbol:
+                        # We have order book data for this symbol
+                        pass
+        
+        # Handle trade updates
+        elif data.get('type') == 'match':
+            side = 'b' if data.get('side') == 'buy' else 's'
+            price = data.get('price')
+            size = data.get('size')
+            
+            if price and size:
+                process_trade("coinbase", {
+                    "price": float(price),
+                    "volume": float(size),
+                    "timestamp": time.time(),
+                    "side": side
+                })
+                
+    except Exception as e:
+        print(f"Coinbase message error: {e}")
+
+def process_trade(exchange, trade):
+    try:
+        price = trade.get('price', 0)
+        volume = trade.get('volume', 0)
+        timestamp = trade.get('timestamp', time.time())
+        side = trade.get('side', 'b')
+        
+        # Convert to float safely
+        try:
+            if not isinstance(price, (int, float)):
+                price = float(price)
+            if not isinstance(volume, (int, float)):
+                volume = float(volume)
+            if not isinstance(timestamp, (int, float)):
+                timestamp = float(timestamp)
+        except (ValueError, TypeError):
+            # Skip invalid trade
+            return
+        
+        # Add trade to the list
+        real_time_data["trades"].append([price, volume, timestamp, side, exchange])
+        
+        # Keep only last 1000 trades
+        if len(real_time_data["trades"]) > 1000:
+            real_time_data["trades"] = real_time_data["trades"][-1000:]
+        
+        # Recalculate metrics
+        calculate_realtime_metrics()
+        
+    except Exception as e:
+        print(f"Process trade error for {exchange}: {e}")
+
+def update_order_book(exchange, bids, asks):
+    try:
+        # Format and validate bids
+        formatted_bids = []
+        if bids and isinstance(bids, list):
+            for bid in bids:
+                if isinstance(bid, list) and len(bid) >= 2:
+                    try:
+                        # Convert to float safely
+                        price = float(bid[0]) if isinstance(bid[0], (int, float, str)) else 0
+                        quantity = float(bid[1]) if isinstance(bid[1], (int, float, str)) else 0
+                        if price > 0 and quantity > 0:
+                            formatted_bids.append([price, quantity])
+                    except (ValueError, TypeError) as e:
+                        # Silently skip invalid entries
+                        continue
+        
+        # Format and validate asks
+        formatted_asks = []
+        if asks and isinstance(asks, list):
+            for ask in asks:
+                if isinstance(ask, list) and len(ask) >= 2:
+                    try:
+                        # Convert to float safely
+                        price = float(ask[0]) if isinstance(ask[0], (int, float, str)) else 0
+                        quantity = float(ask[1]) if isinstance(ask[1], (int, float, str)) else 0
+                        if price > 0 and quantity > 0:
+                            formatted_asks.append([price, quantity])
+                    except (ValueError, TypeError) as e:
+                        # Silently skip invalid entries
+                        continue
+        
+        # Sort bids descending and asks ascending
+        formatted_bids = sorted(formatted_bids, key=lambda x: x[0], reverse=True)[:20]
+        formatted_asks = sorted(formatted_asks, key=lambda x: x[0])[:20]
+        
+        # Update order book
+        if formatted_bids or formatted_asks:
+            real_time_data["order_book"][exchange]["bids"] = formatted_bids
+            real_time_data["order_book"][exchange]["asks"] = formatted_asks
+            
+            # Recalculate metrics
+            calculate_realtime_metrics()
+            
+    except Exception as e:
+        print(f"Update order book error for {exchange}: {e}")
+
+def calculate_realtime_metrics():
+    try:
+        total_buy = 0
+        total_sell = 0
+        
+        # Calculate total buy and sell volume across all exchanges
+        for ex_book in real_time_data["order_book"].values():
+            total_buy += sum(q for _, q in ex_book["bids"])
+            total_sell += sum(q for _, q in ex_book["asks"])
+        
+        real_time_data["total_buy_volume"] = total_buy
+        real_time_data["total_sell_volume"] = total_sell
+        
+        # Calculate order flow imbalance
+        total = total_buy + total_sell + 1e-8
+        real_time_data["order_flow_imbalance"] = (total_buy - total_sell) / total
+        
+        # Calculate VWAP from recent trades (last 5 minutes)
+        now = time.time()
+        recent_trades = [t for t in real_time_data["trades"] if now - t[2] < 300]
+        
+        if recent_trades:
+            vwap_sum = sum(t[0] * t[1] for t in recent_trades)
+            vol_sum = sum(t[1] for t in recent_trades)
+            real_time_data["vwap"] = vwap_sum / vol_sum if vol_sum > 0 else None
+            real_time_data["current_price"] = recent_trades[-1][0] if recent_trades else 0.0
+        else:
+            real_time_data["vwap"] = None
+            real_time_data["current_price"] = 0.0
+        
+        # Calculate predicted price based on order flow imbalance
+        if real_time_data["current_price"]:
+            real_time_data["predicted_price"] = real_time_data["current_price"] * (1 + 0.005 * real_time_data["order_flow_imbalance"])
+        else:
+            real_time_data["predicted_price"] = 0.0
+        
+        real_time_data["last_update"] = time.time()
+        
+    except Exception as e:
+        print(f"Calculate realtime metrics error: {e}")
+
+# ========= ENDPOINTS =========
+@app.route('/realtime_data')
+def get_realtime_data():
+    return jsonify(real_time_data)
+
+@app.route('/set_symbol', methods=['POST'])
+def set_symbol():
+    try:
+        data = request.json
+        new_symbol = data.get('symbol', 'BTC/USDT').upper()
+        new_market_type = data.get('market_type', 'spot').lower()
+        
+        if new_market_type not in ['spot', 'future']:
+            return jsonify({"success": False, "error": "market_type must be 'spot' or 'future'"}), 400
+        
+        changed = (new_symbol != real_time_data["current_symbol"] or
+                   new_market_type != real_time_data.get("market_type", "spot"))
+        
+        if changed:
+            print(f"Changing to {new_symbol} ({new_market_type})")
+            
+            # FIRST: Stop all WebSockets
+            close_websockets()
+            
+            # SECOND: Update the current symbol and market type
+            real_time_data["current_symbol"] = new_symbol
+            real_time_data["market_type"] = new_market_type
+            
+            # THIRD: Clear all existing data
+            for ex in real_time_data["order_book"]:
+                real_time_data["order_book"][ex] = {"bids": [], "asks": []}
+            real_time_data["trades"].clear()
+            real_time_data["vwap"] = None
+            real_time_data["current_price"] = 0.0
+            real_time_data["total_buy_volume"] = 0.0
+            real_time_data["total_sell_volume"] = 0.0
+            real_time_data["order_flow_imbalance"] = 0.0
+            real_time_data["predicted_price"] = 0.0
+            real_time_data["last_update"] = 0
+            
+            # FOURTH: Start WebSockets with new symbol and market type
+            start_websockets()
+            
+            # Give WebSockets time to connect
+            time.sleep(2)
+            
+            print(f"✅ Symbol changed to {new_symbol} ({new_market_type}). WebSockets restarted.")
+            
+        return jsonify({"success": True, "symbol": new_symbol, "market_type": new_market_type})
+    except Exception as e:
+        print(f"Set symbol error: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+# ========= NEW FUTURES ENDPOINTS =========
+@app.route("/long_short_ratio", methods=["GET"])
+def long_short_ratio():
+    """Fetch long/short ratio from Binance Futures"""
+    symbol = request.args.get("symbol", "BTC/USDT").upper().replace('/', '')
+    period = request.args.get("period", "5m")
+    
+    try:
+        # Binance Futures long/short ratio endpoint
+        url = "https://fapi.binance.com/futures/data/globalLongShortAccountRatio"
+        params = {
+            "symbol": symbol,
+            "period": period,
+            "limit": 1
+        }
+        resp = requests.get(url, params=params, timeout=5)
+        if resp.status_code == 200:
+            data = resp.json()
+            if data and len(data) > 0:
+                return jsonify({
+                    "success": True,
+                    "long_short_ratio": float(data[0]["longShortRatio"]),
+                    "long_account": float(data[0]["longAccount"]),
+                    "short_account": float(data[0]["shortAccount"]),
+                    "timestamp": data[0]["timestamp"]
+                })
+        return jsonify({"success": False, "error": "No data from Binance"})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/liquidation_levels", methods=["POST"])
+def liquidation_levels():
+    """
+    Calculate liquidation prices for long/short positions.
+    Payload: { "symbol": "BTC/USDT", "price": current_price, "leverage": 10 }
+    """
+    payload = request.get_json() or {}
+    symbol = payload.get("symbol", real_time_data["current_symbol"]).upper()
+    price = float(payload.get("price", real_time_data["current_price"]))
+    leverage = float(payload.get("leverage", 10))
+
+    if price <= 0 or leverage <= 0:
+        return jsonify({"success": False, "error": "Invalid price or leverage"})
+
+    # Simple liquidation calculation (cross margin, no maintenance margin considered)
+    # For long: liquidation = price * (1 - 1/leverage)
+    # For short: liquidation = price * (1 + 1/leverage)
+    long_liquidation = price * (1 - 1/leverage)
+    short_liquidation = price * (1 + 1/leverage)
+
+    return jsonify({
+        "success": True,
+        "symbol": symbol,
+        "price": price,
+        "leverage": leverage,
+        "long_liquidation": round(long_liquidation, 6),
+        "short_liquidation": round(short_liquidation, 6)
+    })
+
+# ========= OTHER EXISTING ENDPOINTS =========
+# (Keep all other endpoints exactly as they were in your original code)
+# ...
+
+@app.route("/sync_binance_symbols", methods=["POST"])
+def sync_binance_symbols():
+    ex = get_exchange()
+    exchange_name = "binance"
+    try:
+        markets = ex.load_markets()
+        existing = get_existing_symbols(exchange_name)
+        new_symbols = []
+        processed = 0
+        for symbol, m in markets.items():
+            processed += 1
+            if symbol in existing:
+                continue
+            new_symbols.append({
+                "symbol": symbol,
+                "base": m.get("base"),
+                "quote": m.get("quote"),
+                "active": m.get("active", True),
+            })
+            if processed % 50 == 0:
+                time.sleep(0.2)
+        save_new_symbols(exchange_name, new_symbols)
+        return jsonify({
+            "success": True,
+            "exchange": exchange_name,
+            "total_markets": len(markets),
+            "already_existing": len(existing),
+            "newly_added": len(new_symbols),
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/fetch_gainers_losers", methods=["GET"])
+def fetch_gainers_losers():
+    ex = get_exchange()
+    MIN_VOLUME_USD = 10000  # only include pairs with at least $10k 24h volume
+    try:
+        # Load markets to get active symbols
+        markets = ex.load_markets()
+        # Build set of active USDT pairs (symbols ending with /USDT)
+        active_usdt_symbols = {
+            symbol for symbol, market in markets.items()
+            if market['active'] and symbol.endswith('/USDT')
+        }
+        print(f"Found {len(active_usdt_symbols)} active USDT pairs")
+
+        tickers = ex.fetch_tickers()
+        usdt_pairs = {}
+        for sym, d in tickers.items():
+            # Skip if not an active USDT pair
+            if sym not in active_usdt_symbols:
+                continue
+            quote_vol = d.get("quoteVolume")
+            if quote_vol and isinstance(quote_vol, (int, float)) and quote_vol > MIN_VOLUME_USD:
+                usdt_pairs[sym] = d
+
+        all_data = []
+        for sym, d in usdt_pairs.items():
+            pct = d.get("percentage")
+            if pct is None:
+                continue
+            all_data.append({
+                "symbol": sym,
+                "lastPrice": d["last"],
+                "priceChangePercent": pct,
+                "quoteVolume": d["quoteVolume"],
+            })
+
+        gainers = sorted(all_data, key=lambda x: x["priceChangePercent"], reverse=True)[:50]
+        losers = sorted(all_data, key=lambda x: x["priceChangePercent"])[:50]
+
+        # Save to database, overwriting today's records
+        save_daily_gainers_losers(gainers + losers)
+
+        return jsonify({
+            "success": True,
+            "message": f"Fetched {len(gainers)} gainers & {len(losers)} losers (min volume ${MIN_VOLUME_USD:,.0f}).",
+            "gainers": len(gainers),
+            "losers": len(losers)
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/get_gainers", methods=["GET"])
+def get_gainers():
+    conn = get_conn()
+    cur = conn.cursor(dictionary=True)
+    cur.execute("""
+        SELECT symbol, price, price_change_percent, volume_24h, fetched_at
+        FROM daily_gainers_losers
+        WHERE DATE(fetched_at) = CURDATE()
+          AND price_change_percent IS NOT NULL
+        ORDER BY price_change_percent DESC
+        LIMIT 50
+    """)
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    return jsonify({"data": rows})
+
+@app.route("/get_losers", methods=["GET"])
+def get_losers():
+    conn = get_conn()
+    cur = conn.cursor(dictionary=True)
+    cur.execute("""
+        SELECT symbol, price, price_change_percent, volume_24h, fetched_at
+        FROM daily_gainers_losers
+        WHERE DATE(fetched_at) = CURDATE()
+          AND price_change_percent IS NOT NULL
+        ORDER BY price_change_percent ASC
+        LIMIT 50
+    """)
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    return jsonify({"data": rows})
+
+@app.route("/fetch_data", methods=["POST"])
+def fetch_data():
+    payload = request.get_json() or {}
+    symbol = payload.get("symbol", "BTC/USDT").upper()
+    timeframe = payload.get("timeframe", "4h")
+    from_year = payload.get("from_year")
+    to_year = payload.get("to_year")
+    ex = get_exchange()
+    try:
+        if from_year:
+            from_year = int(from_year)
+            since = int(datetime(from_year, 1, 1).timestamp() * 1000)
+        else:
+            since = None
+        params = {}
+        if to_year:
+            to_year = int(to_year)
+            until = int(datetime(to_year, 12, 31, 23, 59, 59).timestamp() * 1000)
+            params["until"] = until
+        else:
+            until = None
+        all_ohlcv = []
+        total_fetched = 0
+        while True:
+            print(f"Fetching chunk for {symbol} {timeframe} from {since if since else 'start'}")
+            ohlcv = ex.fetch_ohlcv(symbol, timeframe=timeframe, since=since, limit=1000, params=params)
+            if not ohlcv:
+                break
+            if until:
+                ohlcv = [c for c in ohlcv if c[0] < until]
+            if not ohlcv:
+                break
+            all_ohlcv.extend(ohlcv)
+            total_fetched += len(ohlcv)
+            df_chunk = pd.DataFrame(ohlcv, columns=["Timestamp", "Open", "High", "Low", "Close", "Volume"])
+            df_chunk["Time (UTC)"] = pd.to_datetime(df_chunk["Timestamp"], unit="ms")
+            df_chunk = df_chunk.sort_values("Time (UTC)").reset_index(drop=True)
+            df_chunk["volume_diff"] = df_chunk["Volume"].diff().fillna(0.0)
+            save_ohlcv(df_chunk, symbol, timeframe)
+            since = ohlcv[-1][0] + 1
+            time.sleep(0.5)
+            if total_fetched > 1_000_000:
+                break
+        if not all_ohlcv:
+            return jsonify({"success": False, "error": "No data from exchange"}), 400
+        df = pd.DataFrame(all_ohlcv, columns=["Timestamp", "Open", "High", "Low", "Close", "Volume"])
+        df["Time (UTC)"] = pd.to_datetime(df["Timestamp"], unit="ms")
+        df = df.sort_values("Time (UTC)").reset_index(drop=True)
+        df["volume_diff"] = df["Volume"].diff().fillna(0.0)
+        return jsonify({
+            "success": True,
+            "message": f"Fetched and saved {total_fetched} candles for {symbol} (all available in range)",
+            "data": df[["Time (UTC)", "Open", "High", "Low", "Close", "Volume", "volume_diff"]].to_dict(orient="records")
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/fetch_from_db", methods=["POST"])
+def fetch_from_db():
+    payload = request.get_json() or {}
+    symbol = payload.get("symbol", "BTC/USDT").upper()
+    timeframe = payload.get("timeframe", "4h")
+    conn = get_conn()
+    cur = conn.cursor(dictionary=True)
+    cur.execute("""
+        SELECT time_utc, open, high, low, close, volume, volume_diff
+        FROM ohlcv_data
+        WHERE symbol=%s AND timeframe=%s
+        ORDER BY time_utc DESC
+        LIMIT 1000
+    """, (symbol, timeframe))
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    if not rows:
+        return jsonify({"success": False, "error": "No data in database"}), 404
+    data = [{
+        "time_utc": r["time_utc"].strftime("%Y-%m-%d %H:%M:%S") if isinstance(r["time_utc"], datetime) else r["time_utc"],
+        "open": float(r["open"]),
+        "high": float(r["high"]),
+        "low": float(r["low"]),
+        "close": float(r["close"]),
+        "volume": float(r["volume"]),
+        "volume_diff": float(r["volume_diff"]) if r["volume_diff"] is not None else 0.0
+    } for r in rows]
+    return jsonify({"success": True, "data": data})
+
+def add_all_indicators(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty:
+        return df
+    out = df.copy()
+    if "Time (UTC)" in out.columns:
+        time_col = "Time (UTC)"
+    elif "Timestamp" in out.columns:
+        out["Time (UTC)"] = pd.to_datetime(out["Timestamp"], unit="ms")
+        time_col = "Time (UTC)"
+    else:
+        print("[WARNING] No time column found in DataFrame for indicators")
+        time_col = None
+    if time_col:
+        out = out.sort_values(time_col).drop_duplicates(subset=time_col, keep="last")
+        out.set_index(time_col, inplace=True)
+    close = out["Close"]
+    high = out["High"]
+    low = out["Low"]
+    volume = out["Volume"]
+    out["RSI"] = ta.rsi(close, length=14)
+    stochrsi = ta.stochrsi(close, length=14, rsi_length=14, k=3, d=3)
+    if stochrsi is not None and not stochrsi.empty:
+        out["STOCHRSI_K"] = stochrsi.iloc[:, 0]
+        out["STOCHRSI_D"] = stochrsi.iloc[:, 1]
+    macd = ta.macd(close, fast=12, slow=26, signal=9)
+    if macd is not None and not macd.empty:
+        out["MACD"] = macd.iloc[:, 0]
+        out["MACD_SIGNAL"] = macd.iloc[:, 1]
+        out["MACD_HIST"] = macd.iloc[:, 2]
+    out["EMA20"] = ta.ema(close, length=20)
+    out["EMA50"] = ta.ema(close, length=50)
+    out["EMA100"] = ta.ema(close, length=100)
+    out["EMA200"] = ta.ema(close, length=200)
+    bb = ta.bbands(close, length=20, std=2)
+    if bb is not None and not bb.empty:
+        out["BB_LOW"] = bb.iloc[:, 0]
+        out["BB_MID"] = bb.iloc[:, 1]
+        out["BB_UPPER"] = bb.iloc[:, 2]
+        out["BB_WIDTH"] = (out["BB_UPPER"] - out["BB_LOW"]) / out["BB_MID"]
+    adx = ta.adx(high, low, close, length=14)
+    if adx is not None and not adx.empty:
+        out["ADX"] = adx.iloc[:, 0]
+    out["CCI"] = ta.cci(high, low, close, length=20)
+    out["OBV"] = ta.obv(close, volume)
+    out["ATR"] = ta.atr(high, low, close, length=14)
+    try:
+        cdl = ta.cdl_pattern(out["Open"], high, low, close,
+                             name=["engulfing", "doji", "hammer", "shootingstar"])
+        if cdl is not None and not cdl.empty:
+            for col in cdl.columns:
+                out[col] = cdl[col]
+    except Exception:
+        pass
+    try:
+        out["VWAP"] = ta.vwap(high=high, low=low, close=close, volume=volume)
+    except Exception as e:
+        print(f"[VWAP] Failed: {e}")
+        out["VWAP"] = pd.NA
+    try:
+        st = ta.supertrend(high=high, low=low, close=close, length=10, multiplier=3)
+        if st is not None and not st.empty:
+            out["SUPERTREND"] = st.iloc[:, 0]
+            out["SUPERTREND_DIR"] = st.iloc[:, 1]
+    except Exception:
+        pass
+    try:
+        dc = ta.donchian(high=high, low=low, lower_length=20, upper_length=20)
+        if dc is not None and not dc.empty:
+            out["DONCHIAN_LOW"] = dc.iloc[:, 0]
+            out["DONCHIAN_HIGH"] = dc.iloc[:, 2]
+    except Exception:
+        pass
+    try:
+        out["VOL_SMA20"] = ta.sma(volume, length=20)
+    except Exception:
+        pass
+    return out
+
+def detect_divergence(price: pd.Series, indicator: pd.Series, lookback: int = 20):
+    if len(price) < lookback + 2 or len(indicator) < lookback + 2:
+        return None
+    p = price.tail(lookback + 2)
+    ind = indicator.tail(lookback + 2)
+    p_prev_high = p.iloc[-2]
+    p_curr_high = p.iloc[-1]
+    ind_prev = ind.iloc[-2]
+    ind_curr = ind.iloc[-1]
+    if p_curr_high > p_prev_high and ind_curr < ind_prev:
+        return "bearish"
+    p_prev_low = p.iloc[-2]
+    p_curr_low = p.iloc[-1]
+    if p_curr_low < p_prev_low and ind_curr > ind_prev:
+        return "bullish"
+    return None
+
+def generate_signal_summary(df: pd.DataFrame):
+    # Initialize default signal
+    default_signal = {
+        "bias": "neutral",
+        "strength": "weak",
+        "label": "NEUTRAL",
+        "reasons": ["Insufficient data for analysis"],
+        "score": 50,
+        "rsi": None,
+        "macd": None,
+        "macd_signal": None,
+        "ema20": None,
+        "ema50": None,
+        "ema100": None,
+        "ema200": None,
+        "close": None,
+        "vwap": None,
+        "supertrend_dir": None,
+        "donchian_high": None,
+        "vol_sma20": None,
+        "adx": None,
+        "atr": None,
+    }
+    
+    if df.empty:
+        return default_signal
+    
+    try:
+        last = df.iloc[-1]
+        close = float(last.get("Close", 0))
+        last_volume = float(last.get("Volume", 0))
+        
+        def get(name, default=None):
+            v = last.get(name, default)
+            return None if pd.isna(v) else float(v)
+        
+        # Get indicator values with safe defaults
+        rsi = get("RSI")
+        macd = get("MACD")
+        macd_sig = get("MACD_SIGNAL")
+        macd_hist = get("MACD_HIST")
+        ema20 = get("EMA20")
+        ema50 = get("EMA50")
+        ema100 = get("EMA100")
+        ema200 = get("EMA200")
+        bb_up = get("BB_UPPER")
+        bb_low = get("BB_LOW")
+        adx = get("ADX")
+        cci = get("CCI")
+        stoch_k = get("STOCHRSI_K")
+        atr = get("ATR")
+        vwap = get("VWAP")
+        supertrend_dir = get("SUPERTREND_DIR")
+        don_high = get("DONCHIAN_HIGH")
+        vol_sma = get("VOL_SMA20")
+        
+        reasons = []
+        score = 50
+        
+        # Your existing signal logic here...
+        # ... [keep your existing signal calculation logic]
+        
+        # Ensure score is within bounds
+        score = max(0, min(100, score))
+        
+        # Determine signal
+        if score >= 75:
+            bias = "bullish"
+            strength = "strong"
+            label = "STRONG_BULLISH"
+        elif score >= 60:
+            bias = "bullish"
+            strength = "normal"
+            label = "BULLISH"
+        elif score <= 25:
+            bias = "bearish"
+            strength = "strong"
+            label = "STRONG_BEARISH"
+        elif score <= 40:
+            bias = "bearish"
+            strength = "normal"
+            label = "BEARISH"
+        else:
+            bias = "neutral"
+            strength = "weak"
+            label = "NEUTRAL"
+        
+        # RSI-based adjustments
+        if rsi is not None and rsi < 30 and "BULLISH" not in label:
+            label = "WATCH_LONG"
+        if rsi is not None and rsi > 70 and "BEARISH" not in label:
+            label = "WATCH_SHORT"
+        
+        return {
+            "bias": bias,
+            "strength": strength,
+            "label": label,
+            "reasons": reasons,
+            "score": score,
+            "rsi": rsi,
+            "macd": macd,
+            "macd_signal": macd_sig,
+            "ema20": ema20,
+            "ema50": ema50,
+            "ema100": ema100,
+            "ema200": ema200,
+            "close": close,
+            "vwap": vwap,
+            "supertrend_dir": supertrend_dir,
+            "donchian_high": don_high,
+            "vol_sma20": vol_sma,
+            "adx": adx,
+            "atr": atr,
+        }
+        
+    except Exception as e:
+        print(f"Error in generate_signal_summary: {e}")
+        return default_signal
+
+@app.route("/analyze_symbol", methods=["POST"])
+def analyze_symbol():
+    payload = request.get_json() or {}
+    symbol = payload.get("symbol", "BTC/USDT").upper()
+    timeframe = payload.get("timeframe", "4h")
+    limit = int(payload.get("limit", 200))
+    ex = get_exchange()
+    try:
+        ohlcv = ex.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
+        if not ohlcv:
+            return jsonify({"success": False, "error": "No data from exchange"}), 400
+        
+        df = pd.DataFrame(ohlcv, columns=["Timestamp", "Open", "High", "Low", "Close", "Volume"])
+        df["Time (UTC)"] = pd.to_datetime(df["Timestamp"], unit="ms")
+        df = df.sort_values("Time (UTC)").reset_index(drop=True)
+        df["volume_diff"] = df["Volume"].diff().fillna(0.0)
+        
+        df_ind = add_all_indicators(df)
+        
+        # FIX: Check if df_ind is not empty
+        if df_ind.empty:
+            return jsonify({"success": False, "error": "No valid data after processing"}), 400
+            
+        sig = generate_signal_summary(df_ind)
+        
+        # FIX: Get the last row safely
+        try:
+            last = df_ind.iloc[-1]
+        except IndexError:
+            return jsonify({"success": False, "error": "No data available"}), 400
+        
+        # FIX: Make sure sig dictionary has all required keys
+        if not sig or not isinstance(sig, dict):
+            sig = {
+                "label": "NEUTRAL",
+                "bias": "neutral",
+                "score": 50,
+                "reasons": ["Insufficient data for analysis"],
+                "rsi": None,
+                "macd": None,
+                "macd_signal": None,
+                "ema20": None,
+                "ema50": None,
+                "ema100": None,
+                "ema200": None
+            }
+        
+        response = {
+            "success": True,
+            "symbol": symbol,
+            "timeframe": timeframe,
+            "last_candle": {
+                "time_utc": last.name.strftime("%Y-%m-%d %H:%M:%S") if isinstance(last.name, pd.Timestamp) else str(last.name),
+                "open": float(last.get("Open", 0)),
+                "high": float(last.get("High", 0)),
+                "low": float(last.get("Low", 0)),
+                "close": float(last.get("Close", 0)),
+                "volume": float(last.get("Volume", 0)),
+            },
+            "indicators": {
+                "rsi": float(sig.get("rsi")) if sig.get("rsi") is not None else None,
+                "macd": float(sig.get("macd")) if sig.get("macd") is not None else None,
+                "macd_signal": float(sig.get("macd_signal")) if sig.get("macd_signal") is not None else None,
+                "ema20": float(sig.get("ema20")) if sig.get("ema20") is not None else None,
+                "ema50": float(sig.get("ema50")) if sig.get("ema50") is not None else None,
+                "ema100": float(sig.get("ema100")) if sig.get("ema100") is not None else None,
+                "ema200": float(sig.get("ema200")) if sig.get("ema200") is not None else None,
+            },
+            "signal": sig.get("label", "NEUTRAL"),
+            "bias": sig.get("bias", "neutral"),
+            "score": sig.get("score", 50),
+            "reasons": sig.get("reasons", ["Analysis completed"])
+        }
+        return jsonify(response)
+    except Exception as e:
+        import traceback
+        print("Error in /analyze_symbol:", str(e))
+        print(traceback.format_exc())
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/gainers_signals", methods=["GET"])
+def gainers_signals():
+    timeframe = "4h"
+    limit = 200
+    max_coins = 15
+    conn = get_conn()
+    cur = conn.cursor(dictionary=True)
+    cur.execute("""
+        SELECT symbol, price_change_percent, volume_24h
+        FROM daily_gainers_losers
+        WHERE DATE(fetched_at) = CURDATE()
+          AND price_change_percent IS NOT NULL
+        ORDER BY price_change_percent DESC
+        LIMIT %s
+    """, (max_coins,))
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    if not rows:
+        return jsonify({"success": False, "error": "No gainers in DB, click Refresh first."}), 400
+    ex = get_exchange()
+    results = []
+    for r in rows:
+        sym = r["symbol"]
+        try:
+            ohlcv = ex.fetch_ohlcv(sym, timeframe=timeframe, limit=limit)
+            if not ohlcv:
+                continue
+            df = pd.DataFrame(ohlcv, columns=["Timestamp", "Open", "High", "Low", "Close", "Volume"])
+            df["Time (UTC)"] = pd.to_datetime(df["Timestamp"], unit="ms")
+            df = df.sort_values("Time (UTC)").reset_index(drop=True)
+            df["volume_diff"] = df["Volume"].diff().fillna(0.0)
+            df_ind = add_all_indicators(df)
+            sig = generate_signal_summary(df_ind)
+            results.append({
+                "symbol": sym,
+                "timeframe": timeframe,
+                "price_change_percent": float(r["price_change_percent"]),
+                "volume_24h": float(r["volume_24h"]),
+                "rsi": sig["rsi"],
+                "signal": sig["label"],
+                "bias": sig["bias"],
+                "score": sig["score"],
+                "close": sig["close"]
+            })
+        except Exception:
+            continue
+    return jsonify({"success": True, "data": results})
+
+@app.route("/rotation_signals", methods=["GET"])
+def rotation_signals():
+    conn = get_conn()
+    cur = conn.cursor(dictionary=True)
+    cur.execute("""
+        SELECT symbol, price_change_percent, volume_24h
+        FROM daily_gainers_losers
+        WHERE DATE(fetched_at) = CURDATE()
+          AND price_change_percent >= 10
+        ORDER BY price_change_percent DESC
+        LIMIT 10
+    """)
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    if not rows:
+        return jsonify({"success": False, "error": "No pumped coins found for rotation."}), 400
+    try:
+        rot = get_rotation_candidates_from_gainers(rows, max_per_category=5)
+        return jsonify({"success": True, "data": rot})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/search_symbols", methods=["GET"])
+def search_symbols():
+    q = request.args.get("q", "").strip().upper()
+    exchange = request.args.get("exchange", "binance")
+    conn = get_conn()
+    cur = conn.cursor(dictionary=True)
+    if q:
+        cur.execute("""
+            SELECT symbol, base, quote, active, created_at
+            FROM exchange_symbols
+            WHERE exchange=%s
+              AND (
+                    symbol LIKE %s OR
+                    base LIKE %s OR
+                    quote LIKE %s
+                  )
+            ORDER BY symbol
+            LIMIT 2000
+        """, (exchange, f"%{q}%", f"%{q}%", f"%{q}%"))
+    else:
+        cur.execute("""
+            SELECT symbol, base, quote, active, created_at
+            FROM exchange_symbols
+            WHERE exchange=%s
+            ORDER BY symbol
+            LIMIT 500
+        """, (exchange,))
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    return jsonify({"success": True, "data": rows})
+
+@app.route("/export_symbols_excel", methods=["GET"])
+def export_symbols_excel():
+    q = request.args.get("q", "").strip().upper()
+    exchange = request.args.get("exchange", "binance")
+    conn = get_conn()
+    df = pd.read_sql("""
+        SELECT symbol, base, quote, active, created_at
+        FROM exchange_symbols
+        WHERE exchange=%s
+          AND (
+                %s = '' OR
+                symbol LIKE %s OR
+                base LIKE %s OR
+                quote LIKE %s
+              )
+        ORDER BY symbol
+    """, conn, params=(
+        exchange,
+        q,
+        f"%{q}%",
+        f"%{q}%",
+        f"%{q}%"
+    ))
+    conn.close()
+    output = BytesIO()
+    df.to_excel(output, index=False, sheet_name="Symbols")
+    output.seek(0)
+    filename = f"symbols_{exchange}_{q or 'all'}.xlsx"
+    return send_file(
+        output,
+        as_attachment=True,
+        download_name=filename,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+
+@app.route("/health", methods=["GET"])
+def health():
+    return jsonify({"status": "ok", "message": "SUPER BOT v4 running with 10 exchanges"})
+
+# ========= DEBUG & VERIFICATION ENDPOINTS =========
+@app.route("/debug_exchanges", methods=["GET"])
+def debug_exchanges():
+    """Debug endpoint to check WebSocket connections"""
+    status = {
+        "current_symbol": real_time_data["current_symbol"],
+        "last_update": real_time_data["last_update"],
+        "last_update_time": datetime.fromtimestamp(real_time_data["last_update"]).strftime("%Y-%m-%d %H:%M:%S") if real_time_data["last_update"] > 0 else "Never",
+        "exchanges": {}
+    }
+    # Removed Kucoin from Code "kucoin", 
+    for exchange in ["binance", "bybit", "okx", "gateio", "huobi", "kraken", "bitget", "mexc", "coinbase"]:
+        book = real_time_data["order_book"][exchange]
+        status["exchanges"][exchange] = {
+            "bids_count": len(book["bids"]),
+            "asks_count": len(book["asks"]),
+            "total_buy": sum(q for _, q in book["bids"]),
+            "total_sell": sum(q for _, q in book["asks"]),
+            "has_data": len(book["bids"]) > 0 or len(book["asks"]) > 0
+        }
+    
+    # Count trades per exchange
+    trade_counts = {}
+    for trade in real_time_data["trades"][-100:]:  # Last 100 trades
+        exchange = trade[4]
+        trade_counts[exchange] = trade_counts.get(exchange, 0) + 1
+    
+    status["recent_trades"] = trade_counts
+    status["total_trades"] = len(real_time_data["trades"])
+    
+    return jsonify(status)
+
+# FUNCTION FOR SECTOR ROTATION ANALYSIS START
+# ========= SECTOR ROTATION ANALYSIS =========
+
+def get_coin_sector(symbol):
+    """Get coin sector/use case - placeholder implementation"""
+    # In production, you would:
+    # 1. Query a database of coin metadata
+    # 2. Use an external API (CoinGecko, CoinMarketCap)
+    # 3. Parse from description/categories
+    
+    # Simple sector mapping based on common crypto categories
+    sector_map = {
+        # DeFi
+        'UNI': 'DeFi', 'AAVE': 'DeFi', 'COMP': 'DeFi', 'MKR': 'DeFi', 'SNX': 'DeFi',
+        'CRV': 'DeFi', 'SUSHI': 'DeFi', 'YFI': 'DeFi', 'LINK': 'Oracle/DeFi',
+        
+        # Layer 1
+        'ETH': 'Layer1', 'SOL': 'Layer1', 'AVAX': 'Layer1', 'ADA': 'Layer1',
+        'DOT': 'Layer1', 'MATIC': 'Layer1/Scaling', 'ATOM': 'Layer1',
+        
+        # Layer 2/Scaling
+        'ARB': 'Layer2', 'OP': 'Layer2', 'IMX': 'Layer2/Gaming',
+        
+        # Meme coins
+        'DOGE': 'Meme', 'SHIB': 'Meme', 'PEPE': 'Meme', 'FLOKI': 'Meme',
+        'BONK': 'Meme', 'WIF': 'Meme',
+        
+        # AI
+        'RNDR': 'AI', 'TAO': 'AI', 'FET': 'AI', 'AGIX': 'AI', 'OCEAN': 'AI',
+        
+        # Gaming
+        'GALA': 'Gaming', 'ENJ': 'Gaming', 'MANA': 'Metaverse/Gaming',
+        'SAND': 'Metaverse/Gaming', 'AXS': 'Gaming',
+        
+        # Privacy
+        'XMR': 'Privacy', 'ZEC': 'Privacy',
+        
+        # Exchange tokens
+        'BNB': 'Exchange', 'FTT': 'Exchange', 'OKB': 'Exchange', 'HT': 'Exchange',
+        
+        # Oracle
+        'BAND': 'Oracle', 'TRB': 'Oracle',
+        
+        # Storage
+        'FIL': 'Storage', 'AR': 'Storage',
+        
+        # Default based on pattern matching
+        'USD': 'Stablecoin',
+        'BTC': 'Store of Value',
+    }
+    
+    # Try exact match
+    base_symbol = symbol.split('/')[0] if '/' in symbol else symbol
+    if base_symbol in sector_map:
+        return sector_map[base_symbol]
+    
+    # Try partial match
+    for key, value in sector_map.items():
+        if key in base_symbol:
+            return value
+    
+    # Default to DeFi for tokens
+    if base_symbol.endswith('FI') or base_symbol.endswith('USD'):
+        return 'DeFi'
+    
+    # Check for common patterns
+    lower_symbol = base_symbol.lower()
+    if 'defi' in lower_symbol or 'swap' in lower_symbol or 'dex' in lower_symbol:
+        return 'DeFi'
+    elif 'game' in lower_symbol or 'gaming' in lower_symbol:
+        return 'Gaming'
+    elif 'ai' in lower_symbol or 'intelligence' in lower_symbol:
+        return 'AI'
+    elif 'meme' in lower_symbol or 'dog' in lower_symbol or 'cat' in lower_symbol:
+        return 'Meme'
+    elif 'privacy' in lower_symbol or 'anon' in lower_symbol:
+        return 'Privacy'
+    elif 'layer' in lower_symbol or 'l2' in lower_symbol:
+        return 'Layer2'
+    
+    return 'Other/Unknown'
+
+def estimate_market_cap(price, volume_24h):
+    """Estimate market cap from price and volume"""
+    if price <= 0 or volume_24h <= 0:
+        return 0
+    
+    # Very rough estimate: market cap ≈ volume * multiplier
+    # Different coins have different volume/market cap ratios
+    # This is just for relative comparisons
+    multiplier = 10  # Rough average for crypto
+    return price * (volume_24h * multiplier / price)
+
+def find_similar_coins(pumped_symbol, sector, pumped_market_cap, min_market_cap, max_market_cap):
+    """Find coins in same sector with lower/equal market cap"""
+    
+    # Get all symbols from database
+    conn = get_conn()
+    cur = conn.cursor(dictionary=True)
+    
+    # Get all USDT pairs
+    cur.execute("""
+        SELECT DISTINCT symbol 
+        FROM daily_gainers_losers 
+        WHERE DATE(fetched_at) = CURDATE()
+        AND symbol LIKE '%/USDT'
+        AND symbol != %s
+        ORDER BY volume_24h DESC
+        LIMIT 200
+    """, (pumped_symbol,))
+    
+    all_symbols = cur.fetchall()
+    cur.close()
+    conn.close()
+    
+    similar_coins = []
+    
+    for row in all_symbols:
+        candidate_symbol = row['symbol']
+        
+        # Skip if same as pumped coin
+        if candidate_symbol == pumped_symbol:
+            continue
+        
+        # Get sector for candidate
+        candidate_sector = get_coin_sector(candidate_symbol)
+        
+        # Check if same sector
+        if candidate_sector == sector:
+            # Get candidate data
+            conn = get_conn()
+            cur = conn.cursor(dictionary=True)
+            cur.execute("""
+                SELECT price, volume_24h 
+                FROM daily_gainers_losers 
+                WHERE symbol = %s 
+                AND DATE(fetched_at) = CURDATE()
+                LIMIT 1
+            """, (candidate_symbol,))
+            
+            candidate_data = cur.fetchone()
+            cur.close()
+            conn.close()
+            
+            if candidate_data:
+                candidate_price = float(candidate_data['price'])
+                candidate_volume = float(candidate_data['volume_24h'])
+                candidate_market_cap = estimate_market_cap(candidate_price, candidate_volume)
+                
+                # Check market cap conditions
+                if (min_market_cap <= candidate_market_cap <= max_market_cap and 
+                    candidate_market_cap <= pumped_market_cap):
+                    
+                    similar_coins.append({
+                        "symbol": candidate_symbol,
+                        "price": candidate_price,
+                        "volume_24h": candidate_volume,
+                        "estimated_market_cap": candidate_market_cap,
+                        "sector": candidate_sector
+                    })
+    
+    # Sort by market cap (lower first)
+    similar_coins.sort(key=lambda x: x['estimated_market_cap'])
+    
+    return similar_coins
+
+def analyze_rotation_candidate(candidate, pumped_coin, pumped_market_cap):
+    """Analyze a candidate coin for rotation potential"""
+    
+    try:
+        symbol = candidate['symbol']
+        
+        # Get technical analysis for candidate
+        conn = get_conn()
+        cur = conn.cursor(dictionary=True)
+        
+        # Get recent price data
+        cur.execute("""
+            SELECT close, volume, time_utc
+            FROM ohlcv_data
+            WHERE symbol = %s AND timeframe = '4h'
+            ORDER BY time_utc DESC
+            LIMIT 20
+        """, (symbol,))
+        
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+        
+        if len(rows) < 5:
+            return None
+        
+        # Calculate technical indicators
+        prices = [float(row['close']) for row in rows]
+        volumes = [float(row['volume']) for row in rows]
+        
+        # Current price and change
+        current_price = prices[0]
+        prev_price = prices[1] if len(prices) > 1 else current_price
+        price_change = ((current_price - prev_price) / prev_price * 100) if prev_price > 0 else 0
+        
+        # Volume analysis
+        avg_volume_5 = np.mean(volumes[:5]) if len(volumes) >= 5 else volumes[0]
+        avg_volume_20 = np.mean(volumes) if len(volumes) >= 20 else np.mean(volumes)
+        volume_ratio = avg_volume_5 / avg_volume_20 if avg_volume_20 > 0 else 1
+        
+        # Price momentum
+        momentum_5 = ((prices[0] - prices[4]) / prices[4] * 100) if len(prices) >= 5 else 0
+        momentum_10 = ((prices[0] - prices[9]) / prices[9] * 100) if len(prices) >= 10 else 0
+        
+        # RSI calculation (simplified)
+        gains = []
+        losses = []
+        for i in range(1, min(14, len(prices))):
+            change = prices[i-1] - prices[i]
+            if change > 0:
+                gains.append(change)
+            else:
+                losses.append(abs(change))
+        
+        avg_gain = np.mean(gains) if gains else 0
+        avg_loss = np.mean(losses) if losses else 0
+        
+        if avg_loss == 0:
+            rsi = 100
+        else:
+            rs = avg_gain / avg_loss
+            rsi = 100 - (100 / (1 + rs))
+        
+        # Calculate rotation score
+        rotation_score = 50  # Base score
+        
+        # Market cap advantage (lower market cap = higher score)
+        market_cap_ratio = candidate['estimated_market_cap'] / pumped_market_cap
+        if market_cap_ratio < 0.5:
+            rotation_score += 20
+        elif market_cap_ratio < 0.8:
+            rotation_score += 10
+        
+        # Volume increase (higher volume ratio = higher score)
+        if volume_ratio > 1.5:
+            rotation_score += 15
+        elif volume_ratio > 1.2:
+            rotation_score += 10
+        
+        # Price hasn't pumped yet (negative or small positive change)
+        if -5 <= price_change <= 5:
+            rotation_score += 10
+        elif price_change < 0:
+            rotation_score += 5
+        
+        # RSI not overbought
+        if rsi < 70:
+            rotation_score += 10
+        if rsi < 30:  # Oversold - opportunity
+            rotation_score += 5
+        
+        # Positive momentum
+        if momentum_5 > 0:
+            rotation_score += 5
+        
+        # Cap score between 0-100
+        rotation_score = max(0, min(100, rotation_score))
+        
+        # Determine recommendation
+        if rotation_score >= 70:
+            recommendation = "STRONG BUY"
+            confidence = "High"
+            color = "success"
+        elif rotation_score >= 60:
+            recommendation = "BUY"
+            confidence = "Medium"
+            color = "info"
+        elif rotation_score >= 50:
+            recommendation = "WATCH"
+            confidence = "Low"
+            color = "warning"
+        else:
+            recommendation = "AVOID"
+            confidence = "Low"
+            color = "secondary"
+        
+        return {
+            "symbol": symbol,
+            "current_price": current_price,
+            "price_change_24h": price_change,
+            "estimated_market_cap": candidate['estimated_market_cap'],
+            "market_cap_ratio": round(market_cap_ratio, 3),
+            "volume_ratio": round(volume_ratio, 2),
+            "rsi": round(rsi, 1),
+            "momentum_5h": round(momentum_5, 2),
+            "momentum_10h": round(momentum_10, 2),
+            "rotation_score": round(rotation_score, 1),
+            "recommendation": recommendation,
+            "confidence": confidence,
+            "color_class": color,
+            "sector": candidate['sector']
+        }
+        
+    except Exception as e:
+        print(f"Error analyzing candidate {candidate['symbol']}: {e}")
+        return None
+
+@app.route("/get_sector_coins", methods=["GET"])
+def get_sector_coins():
+    """Get all coins grouped by sector"""
+    try:
+        # Get all symbols with volume
+        conn = get_conn()
+        cur = conn.cursor(dictionary=True)
+        cur.execute("""
+            SELECT symbol, price, volume_24h
+            FROM daily_gainers_losers 
+            WHERE DATE(fetched_at) = CURDATE()
+            AND symbol LIKE '%/USDT'
+            AND volume_24h > 100000  # Minimum $100k volume
+            ORDER BY volume_24h DESC
+            LIMIT 500
+        """)
+        
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+        
+        # Group by sector
+        sectors = {}
+        
+        for row in rows:
+            symbol = row['symbol']
+            price = float(row['price'])
+            volume = float(row['volume_24h'])
+            
+            sector = get_coin_sector(symbol)
+            market_cap_est = estimate_market_cap(price, volume)
+            
+            if sector not in sectors:
+                sectors[sector] = []
+            
+            sectors[sector].append({
+                "symbol": symbol,
+                "price": price,
+                "volume_24h": volume,
+                "market_cap_est": market_cap_est
+            })
+        
+        # Sort sectors by total market cap
+        sector_list = []
+        for sector, coins in sectors.items():
+            total_market_cap = sum(coin['market_cap_est'] for coin in coins)
+            avg_price_change = 0  # Would need historical data
+            
+            sector_list.append({
+                "sector": sector,
+                "coin_count": len(coins),
+                "total_market_cap": total_market_cap,
+                "top_coins": sorted(coins, key=lambda x: x['market_cap_est'], reverse=True)[:5]
+            })
+        
+        # Sort by total market cap
+        sector_list.sort(key=lambda x: x['total_market_cap'], reverse=True)
+        
+        return jsonify({
+            "success": True,
+            "total_coins": len(rows),
+            "total_sectors": len(sector_list),
+            "sectors": sector_list
+        })
+        
+    except Exception as e:
+        print(f"Get sector coins error: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/enhanced_analyze_symbol", methods=["POST"])
+def enhanced_analyze_symbol():
+    """Enhanced symbol analysis with more indicators and clear long/short signals"""
+    payload = request.get_json() or {}
+    symbol = payload.get("symbol", "BTC/USDT").upper()
+    timeframe = payload.get("timeframe", "4h")
+    limit = int(payload.get("limit", 100))
+    
+    try:
+        # Get data from exchange
+        ex = get_exchange()
+        ohlcv = ex.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
+        
+        if not ohlcv:
+            return jsonify({"success": False, "error": "No data from exchange"}), 400
+        
+        # Create DataFrame
+        df = pd.DataFrame(ohlcv, columns=["timestamp", "open", "high", "low", "close", "volume"])
+        df["time_utc"] = pd.to_datetime(df["timestamp"], unit="ms")
+        df = df.sort_values("time_utc").reset_index(drop=True)
+        
+        # Calculate all technical indicators
+        close = df["close"].astype(float)
+        high = df["high"].astype(float)
+        low = df["low"].astype(float)
+        volume = df["volume"].astype(float)
+        
+        # Basic indicators
+        current_price = float(close.iloc[-1])
+        prev_close = float(close.iloc[-2]) if len(close) > 1 else current_price
+        price_change = ((current_price - prev_close) / prev_close * 100) if prev_close > 0 else 0
+        
+        # RSI
+        rsi_period = 14
+        delta = close.diff()
+        gain = (delta.where(delta > 0, 0)).rolling(window=rsi_period).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=rsi_period).mean()
+        rs = gain / loss
+        rsi = 100 - (100 / (1 + rs))
+        current_rsi = float(rsi.iloc[-1]) if not pd.isna(rsi.iloc[-1]) else 50
+        
+        # MACD
+        ema_12 = close.ewm(span=12, adjust=False).mean()
+        ema_26 = close.ewm(span=26, adjust=False).mean()
+        macd_line = ema_12 - ema_26
+        signal_line = macd_line.ewm(span=9, adjust=False).mean()
+        macd_histogram = macd_line - signal_line
+        
+        current_macd = float(macd_line.iloc[-1]) if not pd.isna(macd_line.iloc[-1]) else 0
+        current_signal = float(signal_line.iloc[-1]) if not pd.isna(signal_line.iloc[-1]) else 0
+        macd_hist = float(macd_histogram.iloc[-1]) if not pd.isna(macd_histogram.iloc[-1]) else 0
+        
+        # Moving Averages
+        sma_20 = close.rolling(window=20).mean()
+        sma_50 = close.rolling(window=50).mean()
+        sma_200 = close.rolling(window=200).mean()
+        
+        current_sma_20 = float(sma_20.iloc[-1]) if not pd.isna(sma_20.iloc[-1]) else current_price
+        current_sma_50 = float(sma_50.iloc[-1]) if not pd.isna(sma_50.iloc[-1]) else current_price
+        current_sma_200 = float(sma_200.iloc[-1]) if not pd.isna(sma_200.iloc[-1]) else current_price
+        
+        # Bollinger Bands
+        bb_period = 20
+        bb_std = 2
+        bb_middle = close.rolling(window=bb_period).mean()
+        bb_std_dev = close.rolling(window=bb_period).std()
+        bb_upper = bb_middle + (bb_std_dev * bb_std)
+        bb_lower = bb_middle - (bb_std_dev * bb_std)
+        
+        current_bb_middle = float(bb_middle.iloc[-1]) if not pd.isna(bb_middle.iloc[-1]) else current_price
+        current_bb_upper = float(bb_upper.iloc[-1]) if not pd.isna(bb_upper.iloc[-1]) else current_price
+        current_bb_lower = float(bb_lower.iloc[-1]) if not pd.isna(bb_lower.iloc[-1]) else current_price
+        bb_width = ((current_bb_upper - current_bb_lower) / current_bb_middle * 100) if current_bb_middle > 0 else 0
+        
+        # ATR (Average True Range) for volatility
+        atr_period = 14
+        tr1 = high - low
+        tr2 = abs(high - close.shift())
+        tr3 = abs(low - close.shift())
+        tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+        atr = tr.rolling(window=atr_period).mean()
+        current_atr = float(atr.iloc[-1]) if not pd.isna(atr.iloc[-1]) else 0
+        atr_percent = (current_atr / current_price * 100) if current_price > 0 else 0
+        
+        # Volume indicators
+        volume_sma_20 = volume.rolling(window=20).mean()
+        current_volume = float(volume.iloc[-1])
+        avg_volume_20 = float(volume_sma_20.iloc[-1]) if not pd.isna(volume_sma_20.iloc[-1]) else current_volume
+        volume_ratio = current_volume / avg_volume_20 if avg_volume_20 > 0 else 1
+        
+        # NEW: Stochastic Oscillator
+        stoch = ta.stoch(high, low, close, k=14, d=3)
+        current_stoch_k = float(stoch['STOCHk_14_3_3'].iloc[-1]) if not pd.isna(stoch['STOCHk_14_3_3'].iloc[-1]) else 50
+        current_stoch_d = float(stoch['STOCHd_14_3_3'].iloc[-1]) if not pd.isna(stoch['STOCHd_14_3_3'].iloc[-1]) else 50
+        
+        # NEW: ADX (with +DI and -DI)
+        adx_data = ta.adx(high, low, close, length=14)
+        current_adx = float(adx_data['ADX_14'].iloc[-1]) if not pd.isna(adx_data['ADX_14'].iloc[-1]) else 20
+        current_di_plus = float(adx_data['DMP_14'].iloc[-1]) if not pd.isna(adx_data['DMP_14'].iloc[-1]) else 20
+        current_di_minus = float(adx_data['DMN_14'].iloc[-1]) if not pd.isna(adx_data['DMN_14'].iloc[-1]) else 20
+        
+        # NEW: CCI
+        cci = ta.cci(high, low, close, length=20)
+        current_cci = float(cci.iloc[-1]) if not pd.isna(cci.iloc[-1]) else 0
+        
+        # Support and Resistance
+        recent_highs = high.tail(20).max()
+        recent_lows = low.tail(20).min()
+        
+        # Calculate signal strength
+        signal_score = 50  # Neutral
+        
+        # RSI scoring
+        if current_rsi < 30:
+            signal_score += 15  # Oversold - bullish
+        elif current_rsi > 70:
+            signal_score -= 15  # Overbought - bearish
+        elif current_rsi > 50:
+            signal_score += 5
+        else:
+            signal_score -= 5
+        
+        # MACD scoring
+        if current_macd > current_signal and macd_hist > 0:
+            signal_score += 15  # Bullish crossover
+        elif current_macd < current_signal and macd_hist < 0:
+            signal_score -= 15  # Bearish crossover
+        
+        # Moving Average scoring
+        if current_price > current_sma_20 > current_sma_50 > current_sma_200:
+            signal_score += 20  # Strong uptrend
+        elif current_price < current_sma_20 < current_sma_50 < current_sma_200:
+            signal_score -= 20  # Strong downtrend
+        elif current_price > current_sma_20 > current_sma_50:
+            signal_score += 10  # Uptrend
+        elif current_price < current_sma_20 < current_sma_50:
+            signal_score -= 10  # Downtrend
+        
+        # Bollinger Bands scoring
+        if current_price < current_bb_lower:
+            signal_score += 10  # Oversold - potential bounce
+        elif current_price > current_bb_upper:
+            signal_score -= 10  # Overbought - potential pullback
+        
+        # Volume scoring
+        if volume_ratio > 1.5:
+            if price_change > 0:
+                signal_score += 10  # High volume with price increase
+            else:
+                signal_score -= 10  # High volume with price decrease
+        
+        # Price action scoring
+        if price_change > 2:
+            signal_score += 5
+        elif price_change < -2:
+            signal_score -= 5
+        
+        # NEW: Stochastic scoring
+        if current_stoch_k > current_stoch_d and current_stoch_k < 20:  # Bullish crossover in oversold
+            signal_score += 10
+        elif current_stoch_k < current_stoch_d and current_stoch_k > 80:  # Bearish crossover in overbought
+            signal_score -= 10
+        if current_stoch_k < 20:
+            signal_score += 5  # Oversold
+        elif current_stoch_k > 80:
+            signal_score -= 5  # Overbought
+        
+        # NEW: ADX scoring
+        if current_adx > 25:  # Strong trend
+            if current_di_plus > current_di_minus:
+                signal_score += 10  # Strong uptrend
+            else:
+                signal_score -= 10  # Strong downtrend
+        elif current_adx < 20:  # Weak trend, potential reversal
+            signal_score += 5 if current_rsi < 50 else -5  # Bias towards oversold/overbought
+        
+        # NEW: CCI scoring
+        if current_cci < -100:
+            signal_score += 10  # Oversold - bullish
+        elif current_cci > 100:
+            signal_score -= 10  # Overbought - bearish
+        
+        # Cap score between 0-100
+        signal_score = max(0, min(100, signal_score))
+        
+        # Determine signal
+        if signal_score >= 75:
+            signal = "STRONG BUY"
+            recommendation = "GO LONG"
+            confidence = "High"
+            color_class = "strong-buy"
+        elif signal_score >= 60:
+            signal = "BUY"
+            recommendation = "Consider Long"
+            confidence = "Medium"
+            color_class = "buy"
+        elif signal_score >= 45:
+            signal = "NEUTRAL"
+            recommendation = "HOLD / WAIT"
+            confidence = "Low"
+            color_class = "neutral"
+        elif signal_score >= 30:
+            signal = "SELL"
+            recommendation = "Consider Short"
+            confidence = "Medium"
+            color_class = "sell"
+        else:
+            signal = "STRONG SELL"
+            recommendation = "GO SHORT"
+            confidence = "High"
+            color_class = "strong-sell"
+        
+        # Calculate stop loss and take profit levels
+        if "BUY" in signal:
+            stop_loss = current_price * 0.97  # 3% stop loss
+            take_profit_1 = current_price * 1.03  # 3% take profit
+            take_profit_2 = current_price * 1.06  # 6% take profit
+        elif "SELL" in signal:
+            stop_loss = current_price * 1.03  # 3% stop loss for shorts
+            take_profit_1 = current_price * 0.97  # 3% take profit
+            take_profit_2 = current_price * 0.94  # 6% take profit
+        else:
+            stop_loss = current_price * 0.99
+            take_profit_1 = current_price * 1.01
+            take_profit_2 = current_price * 1.02
+        
+        # Risk/Reward ratio
+        risk = abs(current_price - stop_loss)
+        reward_1 = abs(take_profit_1 - current_price)
+        reward_2 = abs(take_profit_2 - current_price)
+        
+        rr_ratio_1 = reward_1 / risk if risk > 0 else 0
+        rr_ratio_2 = reward_2 / risk if risk > 0 else 0
+        
+        # Get sector information
+        sector = get_coin_sector(symbol)
+        
+        return jsonify({
+            "success": True,
+            "symbol": symbol,
+            "timeframe": timeframe,
+            "current_price": current_price,
+            "price_change": round(price_change, 2),
+            "signal": signal,
+            "recommendation": recommendation,
+            "confidence": confidence,
+            "signal_score": round(signal_score, 1),
+            "color_class": color_class,
+            "indicators": {
+                "rsi": round(current_rsi, 2),
+                "macd_line": round(current_macd, 4),
+                "macd_signal": round(current_signal, 4),
+                "macd_histogram": round(macd_hist, 4),
+                "sma_20": round(current_sma_20, 4),
+                "sma_50": round(current_sma_50, 4),
+                "sma_200": round(current_sma_200, 4),
+                "bb_upper": round(current_bb_upper, 4),
+                "bb_middle": round(current_bb_middle, 4),
+                "bb_lower": round(current_bb_lower, 4),
+                "bb_width": round(bb_width, 2),
+                "atr": round(current_atr, 4),
+                "atr_percent": round(atr_percent, 2),
+                "volume": round(current_volume, 2),
+                "volume_ratio": round(volume_ratio, 2),
+                # NEW Indicators
+                "stoch_k": round(current_stoch_k, 2),
+                "stoch_d": round(current_stoch_d, 2),
+                "adx": round(current_adx, 2),
+                "di_plus": round(current_di_plus, 2),
+                "di_minus": round(current_di_minus, 2),
+                "cci": round(current_cci, 2)
+            },
+            "levels": {
+                "support": round(float(recent_lows), 4),
+                "resistance": round(float(recent_highs), 4),
+                "stop_loss": round(stop_loss, 4),
+                "take_profit_1": round(take_profit_1, 4),
+                "take_profit_2": round(take_profit_2, 4)
+            },
+            "risk_reward": {
+                "risk_percent": round(abs((stop_loss - current_price) / current_price * 100), 2),
+                "reward_1_percent": round(abs((take_profit_1 - current_price) / current_price * 100), 2),
+                "reward_2_percent": round(abs((take_profit_2 - current_price) / current_price * 100), 2),
+                "rr_ratio_1": round(rr_ratio_1, 2),
+                "rr_ratio_2": round(rr_ratio_2, 2)
+            },
+            "sector": sector,
+            "timestamp": datetime.utcnow().isoformat()
+        })
+        
+    except Exception as e:
+        print(f"Enhanced analysis error: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"success": False, "error": str(e)}), 500
+# END
+
+@app.route('/verify_symbol', methods=['GET'])
+def verify_symbol():
+    """Verify current symbol and WebSocket status"""
+    symbol = real_time_data["current_symbol"]
+    
+    status = {
+        "current_symbol": symbol,
+        "last_update": real_time_data["last_update"],
+        "last_update_time": datetime.fromtimestamp(real_time_data["last_update"]).strftime("%Y-%m-%d %H:%M:%S") if real_time_data["last_update"] > 0 else "Never",
+        "exchanges": {}
+    }
+    # Removed KuCoin From Code "kucoin",
+    for exchange in ["binance", "bybit", "okx", "gateio", "huobi", "kraken", "bitget", "mexc", "coinbase"]:
+        book = real_time_data["order_book"][exchange]
+        status["exchanges"][exchange] = {
+            "bids": len(book["bids"]),
+            "asks": len(book["asks"]),
+            "has_data": len(book["bids"]) > 0 or len(book["asks"]) > 0,
+            "top_bid": book["bids"][0][0] if book["bids"] else None,
+            "top_ask": book["asks"][0][0] if book["asks"] else None
+        }
+    
+    # Count recent trades
+    now = time.time()
+    recent_trades = [t for t in real_time_data["trades"] if now - t[2] < 60]  # Last 60 seconds
+    status["recent_trades_last_minute"] = len(recent_trades)
+    status["total_trades"] = len(real_time_data["trades"])
+    
+    return jsonify(status)
+
+
+    # NEW INDICATORS FUNCTIONS start
+    # ============================================================
+# ADDON: indicators_addon.py
+# Add these imports and routes to your appp.py
+# ============================================================
+# 
+# REQUIRED IMPORTS (add to top of appp.py if not present):
+# from scipy.signal import find_peaks   (pip install scipy)
+# import numpy as np  (already there)
+#
+# ============================================================
+
+# ============================================================
+# 1. VOLUME PROFILE
+# ============================================================
+
+@app.route("/volume_profile", methods=["POST"])
+def volume_profile():
+    """
+    Calculate Volume Profile (TPO/Market Profile) for a symbol.
+    Returns price levels with volume concentration (POC, VAH, VAL, HVN, LVN).
+    """
+    payload = request.get_json() or {}
+    symbol  = payload.get("symbol", "BTC/USDT").upper()
+    timeframe = payload.get("timeframe", "1h")
+    limit   = int(payload.get("limit", 200))      # candles to analyse
+    num_bins = int(payload.get("num_bins", 50))   # price buckets
+    value_area_pct = float(payload.get("value_area_pct", 0.70))  # 70 % VA
+
+    try:
+        conn = get_conn()
+        cur  = conn.cursor(dictionary=True)
+        cur.execute("""
+            SELECT time_utc, open, high, low, close, volume
+            FROM ohlcv_data
+            WHERE symbol=%s AND timeframe=%s
+            ORDER BY time_utc DESC LIMIT %s
+        """, (symbol, timeframe, limit))
+        rows = cur.fetchall()
+        cur.close(); conn.close()
+
+        if len(rows) < 10:
+            return jsonify({"success": False, "error": "Not enough data"}), 400
+
+        df = pd.DataFrame(rows)
+        for c in ["open","high","low","close","volume"]:
+            df[c] = df[c].astype(float)
+        df = df.sort_values("time_utc").reset_index(drop=True)
+
+        price_min = df["low"].min()
+        price_max = df["high"].max()
+        price_range = price_max - price_min
+        if price_range == 0:
+            return jsonify({"success": False, "error": "Zero price range"}), 400
+
+        bin_size  = price_range / num_bins
+        bins      = np.linspace(price_min, price_max, num_bins + 1)
+        bin_vol   = np.zeros(num_bins)
+
+        for _, row in df.iterrows():
+            # Distribute candle volume across touched bins (equal weight)
+            lo, hi, vol = row["low"], row["high"], row["volume"]
+            touched = []
+            for i in range(num_bins):
+                if bins[i] <= hi and bins[i+1] >= lo:
+                    touched.append(i)
+            if touched:
+                share = vol / len(touched)
+                for i in touched:
+                    bin_vol[i] += share
+
+        # POC – price of control (highest volume bin)
+        poc_idx   = int(np.argmax(bin_vol))
+        poc_price = float((bins[poc_idx] + bins[poc_idx+1]) / 2)
+
+        # Value Area (70 % of total volume around POC)
+        total_vol = bin_vol.sum()
+        target_va = total_vol * value_area_pct
+        va_vol    = bin_vol[poc_idx]
+        lo_idx    = poc_idx
+        hi_idx    = poc_idx
+
+        while va_vol < target_va:
+            up_gain = bin_vol[hi_idx+1] if hi_idx+1 < num_bins else 0
+            dn_gain = bin_vol[lo_idx-1] if lo_idx-1 >= 0       else 0
+            if up_gain >= dn_gain:
+                hi_idx  = min(hi_idx+1, num_bins-1)
+                va_vol += up_gain
+            else:
+                lo_idx  = max(lo_idx-1, 0)
+                va_vol += dn_gain
+            if hi_idx == num_bins-1 and lo_idx == 0:
+                break
+
+        vah = float((bins[hi_idx] + bins[hi_idx+1]) / 2)
+        val = float((bins[lo_idx] + bins[lo_idx+1]) / 2)
+
+        # HVN – High Volume Nodes (bins > 70th percentile)
+        p70 = float(np.percentile(bin_vol[bin_vol > 0], 70))
+        p30 = float(np.percentile(bin_vol[bin_vol > 0], 30))
+
+        hvn = []
+        lvn = []
+        profile = []
+        for i in range(num_bins):
+            mid = float((bins[i] + bins[i+1]) / 2)
+            v   = float(bin_vol[i])
+            profile.append({"price": round(mid, 6), "volume": round(v, 4)})
+            if v >= p70:
+                hvn.append({"price": round(mid, 6), "volume": round(v, 4)})
+            if v <= p30 and v > 0:
+                lvn.append({"price": round(mid, 6), "volume": round(v, 4)})
+
+        current_price = float(df["close"].iloc[-1])
+
+        # Signal hint
+        if current_price > vah:
+            vp_signal = "BREAKOUT_ABOVE_VA"
+        elif current_price < val:
+            vp_signal = "BREAKDOWN_BELOW_VA"
+        elif poc_price * 0.999 <= current_price <= poc_price * 1.001:
+            vp_signal = "AT_POC"
+        elif current_price > poc_price:
+            vp_signal = "ABOVE_POC"
+        else:
+            vp_signal = "BELOW_POC"
+
+        return jsonify({
+            "success":       True,
+            "symbol":        symbol,
+            "timeframe":     timeframe,
+            "candles_used":  len(df),
+            "num_bins":      num_bins,
+            "current_price": current_price,
+            "poc":           round(poc_price, 6),
+            "vah":           round(vah, 6),
+            "val":           round(val, 6),
+            "value_area_pct": value_area_pct,
+            "hvn":           hvn[:10],
+            "lvn":           lvn[:10],
+            "profile":       profile,
+            "vp_signal":     vp_signal,
+            "timestamp":     datetime.utcnow().isoformat()
+        })
+
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ============================================================
+# 2. ORDER BOOK FLOW (delta, cumulative delta, imbalance heatmap)
+# ============================================================
+
+@app.route("/order_book_flow", methods=["POST"])
+def order_book_flow():
+    """
+    Analyses live order book + recent trades to compute:
+    - Bid/Ask walls
+    - Cumulative delta (buy vol - sell vol)
+    - Absorption zones
+    - Flow imbalance per price level
+    """
+    payload = request.get_json() or {}
+    symbol  = payload.get("symbol", real_time_data["current_symbol"])
+    selected_exchanges = payload.get(
+        "exchanges",
+        ["binance","bybit","okx","gateio","huobi","kraken","bitget","mexc","coinbase"]
+    )
+    time_window = int(payload.get("time_window", 60))   # seconds
+    depth_levels = int(payload.get("depth_levels", 20))
+    wall_multiplier = float(payload.get("wall_multiplier", 3.0))  # x avg volume to call a wall
+
+    try:
+        now = time.time()
+
+        # ── Combine order books ────────────────────────────────
+        bid_map = {}   # price -> total qty
+        ask_map = {}
+
+        for ex in selected_exchanges:
+            book = real_time_data["order_book"].get(ex, {"bids":[],"asks":[]})
+            for price, qty in book["bids"]:
+                bid_map[price] = bid_map.get(price, 0) + qty
+            for price, qty in book["asks"]:
+                ask_map[price] = ask_map.get(price, 0) + qty
+
+        sorted_bids = sorted(bid_map.items(), key=lambda x: x[0], reverse=True)[:depth_levels]
+        sorted_asks = sorted(ask_map.items(), key=lambda x: x[0])[:depth_levels]
+
+        # Avg volumes for wall detection
+        avg_bid_vol = np.mean([q for _,q in sorted_bids]) if sorted_bids else 1
+        avg_ask_vol = np.mean([q for _,q in sorted_asks]) if sorted_asks else 1
+
+        bid_walls = [
+            {"price": round(p,6), "volume": round(q,4), "strength": round(q/avg_bid_vol,2)}
+            for p,q in sorted_bids if q >= avg_bid_vol * wall_multiplier
+        ]
+        ask_walls = [
+            {"price": round(p,6), "volume": round(q,4), "strength": round(q/avg_ask_vol,2)}
+            for p,q in sorted_asks if q >= avg_ask_vol * wall_multiplier
+        ]
+
+        # ── Cumulative delta from recent trades ────────────────
+        recent_trades = [
+            t for t in real_time_data["trades"]
+            if t[4] in selected_exchanges and (now - t[2]) <= time_window
+        ]
+
+        buy_vol  = sum(t[1] for t in recent_trades if t[3]=='b')
+        sell_vol = sum(t[1] for t in recent_trades if t[3]=='s')
+        cum_delta = buy_vol - sell_vol
+        total_vol = buy_vol + sell_vol + 1e-9
+
+        # ── Per-level flow imbalance ───────────────────────────
+        # Group trades into price buckets matching the order book
+        flow_by_level = {}
+        for trade in recent_trades:
+            price = round(trade[0], 2)
+            if price not in flow_by_level:
+                flow_by_level[price] = {"buy":0,"sell":0}
+            if trade[3]=='b':
+                flow_by_level[price]["buy"] += trade[1]
+            else:
+                flow_by_level[price]["sell"] += trade[1]
+
+        flow_levels = []
+        for price, vols in sorted(flow_by_level.items(), reverse=True)[:20]:
+            b,s = vols["buy"], vols["sell"]
+            imb = (b-s)/(b+s+1e-9)
+            flow_levels.append({
+                "price":      round(price,6),
+                "buy_vol":    round(b,4),
+                "sell_vol":   round(s,4),
+                "imbalance":  round(imb,4),
+                "delta":      round(b-s,4)
+            })
+
+        # ── Absorption detection ───────────────────────────────
+        # A bid wall that has recent sell-side trades against it = absorption
+        absorptions = []
+        for wall in bid_walls:
+            wall_p = wall["price"]
+            nearby = [l for l in flow_levels if abs(l["price"]-wall_p)/wall_p < 0.002]
+            if nearby:
+                sell_pressure = sum(l["sell_vol"] for l in nearby)
+                if sell_pressure > 0:
+                    absorptions.append({
+                        "type":          "BID_ABSORPTION",
+                        "price":         wall_p,
+                        "wall_volume":   wall["volume"],
+                        "sell_absorbed": round(sell_pressure, 4),
+                        "signal":        "BULLISH"
+                    })
+
+        for wall in ask_walls:
+            wall_p = wall["price"]
+            nearby = [l for l in flow_levels if abs(l["price"]-wall_p)/wall_p < 0.002]
+            if nearby:
+                buy_pressure = sum(l["buy_vol"] for l in nearby)
+                if buy_pressure > 0:
+                    absorptions.append({
+                        "type":        "ASK_ABSORPTION",
+                        "price":       wall_p,
+                        "wall_volume": wall["volume"],
+                        "buy_absorbed": round(buy_pressure, 4),
+                        "signal":      "BEARISH"
+                    })
+
+        # ── Current price ──────────────────────────────────────
+        current_price = real_time_data.get("current_price", 0)
+        if not current_price and sorted_bids and sorted_asks:
+            current_price = (sorted_bids[0][0] + sorted_asks[0][0]) / 2
+
+        # ── Overall flow signal ────────────────────────────────
+        flow_ratio = buy_vol / total_vol
+        if cum_delta > 0 and flow_ratio > 0.6:
+            flow_signal = "STRONG_BUY_FLOW"
+        elif cum_delta > 0:
+            flow_signal = "BUY_FLOW"
+        elif cum_delta < 0 and flow_ratio < 0.4:
+            flow_signal = "STRONG_SELL_FLOW"
+        elif cum_delta < 0:
+            flow_signal = "SELL_FLOW"
+        else:
+            flow_signal = "NEUTRAL_FLOW"
+
+        return jsonify({
+            "success":        True,
+            "symbol":         symbol,
+            "current_price":  round(current_price, 6),
+            "time_window_s":  time_window,
+            "cumulative_delta": round(cum_delta, 4),
+            "buy_volume":     round(buy_vol, 4),
+            "sell_volume":    round(sell_vol, 4),
+            "flow_ratio":     round(flow_ratio, 4),
+            "flow_signal":    flow_signal,
+            "bid_walls":      bid_walls[:5],
+            "ask_walls":      ask_walls[:5],
+            "absorptions":    absorptions[:5],
+            "flow_levels":    flow_levels[:15],
+            "order_book": {
+                "bids": [{"price": round(p,6),"volume": round(q,4)} for p,q in sorted_bids[:10]],
+                "asks": [{"price": round(p,6),"volume": round(q,4)} for p,q in sorted_asks[:10]]
+            },
+            "timestamp": datetime.utcnow().isoformat()
+        })
+
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ============================================================
+# 3. LIQUIDITY SWEEP DETECTOR
+# ============================================================
+
+@app.route("/liquidity_sweep", methods=["POST"])
+def liquidity_sweep():
+    """
+    Detects liquidity sweeps (stop hunts) from historical OHLCV:
+    - Equal Highs / Equal Lows (inducement zones)
+    - Wick sweeps above resistance / below support
+    - Sweep + reversal patterns
+    Returns recent sweeps and current inducement levels.
+    """
+    payload   = request.get_json() or {}
+    symbol    = payload.get("symbol", "BTC/USDT").upper()
+    timeframe = payload.get("timeframe", "1h")
+    limit     = int(payload.get("limit", 200))
+    wick_pct  = float(payload.get("wick_pct", 0.3))   # wick must be >=30 % of range
+    eq_tol    = float(payload.get("eq_tolerance", 0.002))  # 0.2 % for "equal" levels
+
+    try:
+        conn = get_conn()
+        cur  = conn.cursor(dictionary=True)
+        cur.execute("""
+            SELECT time_utc, open, high, low, close, volume
+            FROM ohlcv_data
+            WHERE symbol=%s AND timeframe=%s
+            ORDER BY time_utc DESC LIMIT %s
+        """, (symbol, timeframe, limit))
+        rows = cur.fetchall()
+        cur.close(); conn.close()
+
+        if len(rows) < 20:
+            return jsonify({"success": False, "error": "Not enough data"}), 400
+
+        df = pd.DataFrame(rows)
+        for c in ["open","high","low","close","volume"]:
+            df[c] = df[c].astype(float)
+        df = df.sort_values("time_utc").reset_index(drop=True)
+
+        opens  = df["open"].values
+        highs  = df["high"].values
+        lows   = df["low"].values
+        closes = df["close"].values
+        times  = df["time_utc"].values
+
+        sweeps = []
+        inducement_highs = []
+        inducement_lows  = []
+
+        # ── Equal Highs / Lows (inducement zones) ─────────────
+        for i in range(5, len(df)-1):
+            # Compare last 5 candles for equal highs
+            window_h = highs[max(0,i-10):i]
+            window_l = lows[max(0,i-10):i]
+            curr_h = highs[i]
+            curr_l = lows[i]
+
+            for prev_h in window_h:
+                if prev_h > 0 and abs(curr_h - prev_h)/prev_h < eq_tol:
+                    inducement_highs.append(round(float(curr_h), 6))
+                    break
+
+            for prev_l in window_l:
+                if prev_l > 0 and abs(curr_l - prev_l)/prev_l < eq_tol:
+                    inducement_lows.append(round(float(curr_l), 6))
+                    break
+
+        # Deduplicate inducement levels (cluster within eq_tol)
+        def cluster_levels(levels):
+            if not levels: return []
+            levels = sorted(set(levels))
+            clustered = [levels[0]]
+            for lv in levels[1:]:
+                if abs(lv - clustered[-1])/clustered[-1] > eq_tol:
+                    clustered.append(lv)
+            return clustered
+
+        inducement_highs = cluster_levels(inducement_highs)[-10:]
+        inducement_lows  = cluster_levels(inducement_lows)[:10]
+
+        # ── Sweep Detection ────────────────────────────────────
+        for i in range(10, len(df)-1):
+            candle_range = highs[i] - lows[i]
+            if candle_range == 0:
+                continue
+
+            upper_wick = highs[i] - max(opens[i], closes[i])
+            lower_wick = min(opens[i], closes[i]) - lows[i]
+            body       = abs(closes[i] - opens[i])
+
+            time_str = str(times[i])
+
+            # ── Bearish sweep: spike above then close back down ─
+            if upper_wick / candle_range >= wick_pct:
+                # Check if high swept a previous resistance
+                prev_highs = highs[max(0,i-20):i]
+                swept = [h for h in prev_highs if lows[i] < h < highs[i]]
+                if swept:
+                    # Confirmed if current close < swept level
+                    if closes[i] < max(swept):
+                        sweeps.append({
+                            "type":         "BEARISH_SWEEP",
+                            "time":         time_str,
+                            "index":        i,
+                            "sweep_price":  round(float(highs[i]), 6),
+                            "close_price":  round(float(closes[i]), 6),
+                            "swept_level":  round(float(max(swept)), 6),
+                            "wick_pct":     round(upper_wick/candle_range*100, 1),
+                            "volume":       round(float(df["volume"].iloc[i]), 4),
+                            "signal":       "SHORT_OPPORTUNITY",
+                            "description":  "Price swept above resistance and rejected – potential short"
+                        })
+
+            # ── Bullish sweep: spike below then close back up ──
+            if lower_wick / candle_range >= wick_pct:
+                prev_lows = lows[max(0,i-20):i]
+                swept = [l for l in prev_lows if highs[i] > l > lows[i]]
+                if swept:
+                    if closes[i] > min(swept):
+                        sweeps.append({
+                            "type":         "BULLISH_SWEEP",
+                            "time":         time_str,
+                            "index":        i,
+                            "sweep_price":  round(float(lows[i]), 6),
+                            "close_price":  round(float(closes[i]), 6),
+                            "swept_level":  round(float(min(swept)), 6),
+                            "wick_pct":     round(lower_wick/candle_range*100, 1),
+                            "volume":       round(float(df["volume"].iloc[i]), 4),
+                            "signal":       "LONG_OPPORTUNITY",
+                            "description":  "Price swept below support and recovered – potential long"
+                        })
+
+        # Keep only last 20 and sort newest first
+        sweeps = sweeps[-20:][::-1]
+
+        # ── Current bar sweep risk ─────────────────────────────
+        current = df.iloc[-1]
+        curr_range  = float(current["high"] - current["low"])
+        curr_upper  = float(current["high"] - max(current["open"], current["close"]))
+        curr_lower  = float(min(current["open"], current["close"]) - current["low"])
+
+        sweep_risk = "NONE"
+        if curr_range > 0:
+            if curr_upper / curr_range > 0.5:
+                sweep_risk = "POTENTIAL_BEARISH_SWEEP"
+            elif curr_lower / curr_range > 0.5:
+                sweep_risk = "POTENTIAL_BULLISH_SWEEP"
+
+        # Proximity to inducement zones
+        curr_price = float(closes[-1])
+        near_high_zone = any(abs(curr_price - h)/h < 0.005 for h in inducement_highs)
+        near_low_zone  = any(abs(curr_price - l)/l < 0.005 for l in inducement_lows)
+
+        return jsonify({
+            "success":           True,
+            "symbol":            symbol,
+            "timeframe":         timeframe,
+            "current_price":     round(curr_price, 6),
+            "sweeps":            sweeps,
+            "total_sweeps":      len(sweeps),
+            "bullish_sweeps":    sum(1 for s in sweeps if s["type"]=="BULLISH_SWEEP"),
+            "bearish_sweeps":    sum(1 for s in sweeps if s["type"]=="BEARISH_SWEEP"),
+            "inducement_highs":  inducement_highs,
+            "inducement_lows":   inducement_lows,
+            "sweep_risk":        sweep_risk,
+            "near_high_zone":    near_high_zone,
+            "near_low_zone":     near_low_zone,
+            "timestamp":         datetime.utcnow().isoformat()
+        })
+
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ============================================================
+# 4. ENHANCED SIGNAL GENERATOR (combines all 3 new indicators)
+# ============================================================
+
+@app.route("/enhanced_signal_v2", methods=["POST"])
+def enhanced_signal_v2():
+    """
+    Full institutional-grade signal combining:
+    - Classic TA (RSI, MACD, EMA, BB, ATR, ADX, CCI, Stoch)
+    - Volume Profile (POC, VAH, VAL position)
+    - Order Book Flow (cumulative delta, walls, absorption)
+    - Liquidity Sweep (recent sweeps, inducement zones, sweep risk)
+    Returns a composite signal with score 0-100 and detailed reasoning.
+    """
+    payload   = request.get_json() or {}
+    symbol    = payload.get("symbol", "BTC/USDT").upper()
+    timeframe = payload.get("timeframe", "4h")
+    limit     = int(payload.get("limit", 100))
+    selected_exchanges = payload.get(
+        "exchanges",
+        ["binance","bybit","okx","gateio","huobi","bitget","mexc","coinbase"]
+    )
+
+    try:
+        # ── 1. Classic TA ──────────────────────────────────────
+        ex = get_exchange()
+        ohlcv = ex.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
+        if not ohlcv:
+            return jsonify({"success": False, "error": "No OHLCV data"}), 400
+
+        df = pd.DataFrame(ohlcv, columns=["timestamp","open","high","low","close","volume"])
+        df["time_utc"] = pd.to_datetime(df["timestamp"], unit="ms")
+        df = df.sort_values("time_utc").reset_index(drop=True)
+
+        close  = df["close"].astype(float)
+        high   = df["high"].astype(float)
+        low    = df["low"].astype(float)
+        volume = df["volume"].astype(float)
+        curr_price = float(close.iloc[-1])
+
+        # RSI
+        delta = close.diff()
+        gain  = delta.where(delta>0,0).rolling(14).mean()
+        loss  = (-delta.where(delta<0,0)).rolling(14).mean()
+        rsi   = float((100 - 100/(1+gain/loss)).iloc[-1]) if float(loss.iloc[-1]) else 100.0
+
+        # MACD
+        ema12      = close.ewm(span=12,adjust=False).mean()
+        ema26      = close.ewm(span=26,adjust=False).mean()
+        macd_line  = ema12 - ema26
+        macd_sig   = macd_line.ewm(span=9,adjust=False).mean()
+        macd_hist  = float((macd_line - macd_sig).iloc[-1])
+        macd_cross = "BULLISH" if float(macd_line.iloc[-1]) > float(macd_sig.iloc[-1]) else "BEARISH"
+
+        # EMAs
+        ema20  = float(close.ewm(span=20,adjust=False).mean().iloc[-1])
+        ema50  = float(close.ewm(span=50,adjust=False).mean().iloc[-1])
+        ema200 = float(close.ewm(span=200,adjust=False).mean().iloc[-1]) if len(close)>=200 else ema50
+
+        # Bollinger
+        bb_mid   = close.rolling(20).mean()
+        bb_std   = close.rolling(20).std()
+        bb_upper = float((bb_mid + 2*bb_std).iloc[-1])
+        bb_lower = float((bb_mid - 2*bb_std).iloc[-1])
+
+        # ATR
+        tr1 = high - low
+        tr2 = abs(high - close.shift())
+        tr3 = abs(low  - close.shift())
+        atr = float(pd.concat([tr1,tr2,tr3],axis=1).max(axis=1).rolling(14).mean().iloc[-1])
+        atr_pct = atr / curr_price * 100
+
+        # ADX (simplified)
+        try:
+            adx_df  = ta.adx(high, low, close, length=14)
+            adx_val = float(adx_df.iloc[-1,0]) if not adx_df.empty else 20.0
+            dip     = float(adx_df.iloc[-1,1]) if adx_df.shape[1]>1 else 20.0
+            dim     = float(adx_df.iloc[-1,2]) if adx_df.shape[1]>2 else 20.0
+        except Exception:
+            adx_val, dip, dim = 20.0, 20.0, 20.0
+
+        # Volume trend
+        vol_avg20 = float(volume.rolling(20).mean().iloc[-1]) or 1
+        vol_ratio = float(volume.iloc[-1]) / vol_avg20
+
+        # ── 2. Volume Profile (in-process, no HTTP round-trip) ─
+        vp_signal = "UNKNOWN"
+        poc_price = curr_price
+        vah_price = curr_price * 1.005
+        val_price = curr_price * 0.995
+        try:
+            conn2 = get_conn()
+            cur2  = conn2.cursor(dictionary=True)
+            cur2.execute("""
+                SELECT high,low,volume FROM ohlcv_data
+                WHERE symbol=%s AND timeframe=%s
+                ORDER BY time_utc DESC LIMIT 200
+            """, (symbol, timeframe))
+            vp_rows = cur2.fetchall()
+            cur2.close(); conn2.close()
+
+            if len(vp_rows) >= 20:
+                num_bins   = 40
+                ph = max(float(r["high"]) for r in vp_rows)
+                pl = min(float(r["low"])  for r in vp_rows)
+                bins = np.linspace(pl, ph, num_bins+1)
+                bvol = np.zeros(num_bins)
+                for r in vp_rows:
+                    rh = float(r["high"]); rl = float(r["low"]); rv = float(r["volume"])
+                    touched = [i for i in range(num_bins) if bins[i]<=rh and bins[i+1]>=rl]
+                    if touched:
+                        share = rv/len(touched)
+                        for i in touched: bvol[i] += share
+                poc_idx   = int(np.argmax(bvol))
+                poc_price = float((bins[poc_idx]+bins[poc_idx+1])/2)
+                # Quick 70% VA
+                target = bvol.sum()*0.7; va_v=bvol[poc_idx]; li=poc_idx; hi2=poc_idx
+                while va_v < target:
+                    up = bvol[hi2+1] if hi2+1<num_bins else 0
+                    dn = bvol[li-1]  if li-1>=0       else 0
+                    if up>=dn: hi2=min(hi2+1,num_bins-1); va_v+=up
+                    else:      li=max(li-1,0);            va_v+=dn
+                    if hi2==num_bins-1 and li==0: break
+                vah_price = float((bins[hi2]+bins[hi2+1])/2)
+                val_price = float((bins[li]+bins[li+1])/2)
+
+                if curr_price > vah_price:   vp_signal = "ABOVE_VA"
+                elif curr_price < val_price: vp_signal = "BELOW_VA"
+                elif abs(curr_price-poc_price)/poc_price < 0.002: vp_signal = "AT_POC"
+                elif curr_price > poc_price: vp_signal = "ABOVE_POC"
+                else:                        vp_signal = "BELOW_POC"
+        except Exception as vpe:
+            print(f"VP inline error: {vpe}")
+
+        # ── 3. Order Book Flow ─────────────────────────────────
+        now = time.time()
+        recent_trades = [
+            t for t in real_time_data["trades"]
+            if t[4] in selected_exchanges and (now - t[2]) <= 120
+        ]
+        buy_vol_rt  = sum(t[1] for t in recent_trades if t[3]=='b')
+        sell_vol_rt = sum(t[1] for t in recent_trades if t[3]=='s')
+        cum_delta   = buy_vol_rt - sell_vol_rt
+        flow_ratio  = buy_vol_rt / (buy_vol_rt + sell_vol_rt + 1e-9)
+
+        # Walls
+        bid_map = {}; ask_map = {}
+        for ex_name in selected_exchanges:
+            book = real_time_data["order_book"].get(ex_name, {"bids":[],"asks":[]})
+            for p,q in book["bids"]: bid_map[p] = bid_map.get(p,0) + q
+            for p,q in book["asks"]: ask_map[p] = ask_map.get(p,0) + q
+        sorted_bids = sorted(bid_map.items(), key=lambda x:x[0], reverse=True)[:20]
+        sorted_asks = sorted(ask_map.items(), key=lambda x:x[0])[:20]
+        avg_bv = np.mean([q for _,q in sorted_bids]) if sorted_bids else 1
+        avg_av = np.mean([q for _,q in sorted_asks]) if sorted_asks else 1
+        bid_walls_exist = any(q>=avg_bv*3 for _,q in sorted_bids)
+        ask_walls_exist = any(q>=avg_av*3 for _,q in sorted_asks)
+
+        if   cum_delta > 0 and flow_ratio > 0.6: ob_signal = "STRONG_BUY_FLOW"
+        elif cum_delta > 0:                       ob_signal = "BUY_FLOW"
+        elif cum_delta < 0 and flow_ratio < 0.4: ob_signal = "STRONG_SELL_FLOW"
+        elif cum_delta < 0:                       ob_signal = "SELL_FLOW"
+        else:                                     ob_signal = "NEUTRAL"
+
+        # ── 4. Liquidity Sweep (inline, no HTTP) ──────────────
+        sweep_signal = "NONE"
+        recent_sweep_type = "NONE"
+        near_inducement = False
+        try:
+            conn3 = get_conn()
+            cur3  = conn3.cursor(dictionary=True)
+            cur3.execute("""
+                SELECT open,high,low,close,volume FROM ohlcv_data
+                WHERE symbol=%s AND timeframe=%s
+                ORDER BY time_utc DESC LIMIT 50
+            """, (symbol, timeframe))
+            sw_rows = cur3.fetchall()
+            cur3.close(); conn3.close()
+
+            if len(sw_rows) >= 10:
+                sw_df = pd.DataFrame(sw_rows)
+                for c in ["open","high","low","close","volume"]: sw_df[c]=sw_df[c].astype(float)
+                sw_df = sw_df.sort_values("close",ascending=True).reset_index(drop=True)  # oldest→newest
+                opens_  = sw_df["open"].values
+                highs_  = sw_df["high"].values
+                lows_   = sw_df["low"].values
+                closes_ = sw_df["close"].values
+
+                # Check last 5 candles for sweeps
+                for i in range(1, min(5, len(sw_df))):
+                    crange = highs_[i] - lows_[i]
+                    if crange == 0: continue
+                    uwik = highs_[i] - max(opens_[i], closes_[i])
+                    lwik = min(opens_[i], closes_[i]) - lows_[i]
+                    if lwik/crange > 0.4 and closes_[i] > min(opens_[i],closes_[i])*1.001:
+                        recent_sweep_type = "BULLISH_SWEEP"
+                        sweep_signal = "LONG_BIAS"
+                        break
+                    if uwik/crange > 0.4 and closes_[i] < max(opens_[i],closes_[i])*0.999:
+                        recent_sweep_type = "BEARISH_SWEEP"
+                        sweep_signal = "SHORT_BIAS"
+                        break
+
+                # Inducement proximity
+                eq_tol = 0.002
+                ind_h = []; ind_l = []
+                for i in range(5, len(sw_df)):
+                    wh = highs_[max(0,i-10):i]
+                    wl = lows_[max(0,i-10):i]
+                    for ph in wh:
+                        if ph>0 and abs(highs_[i]-ph)/ph < eq_tol:
+                            ind_h.append(highs_[i]); break
+                    for pl in wl:
+                        if pl>0 and abs(lows_[i]-pl)/pl < eq_tol:
+                            ind_l.append(lows_[i]); break
+
+                near_inducement = (
+                    any(abs(curr_price-h)/h < 0.005 for h in ind_h) or
+                    any(abs(curr_price-l)/l < 0.005 for l in ind_l)
+                )
+        except Exception as swe:
+            print(f"Sweep inline error: {swe}")
+
+        # ============================================================
+        # COMPOSITE SIGNAL SCORING (0-100)
+        # ============================================================
+        score  = 50
+        reasons = []
+
+        # ── Classic TA scoring ───────────────────────────────
+        # RSI
+        if rsi < 30:
+            score += 15; reasons.append(f"RSI oversold ({rsi:.1f})")
+        elif rsi > 70:
+            score -= 15; reasons.append(f"RSI overbought ({rsi:.1f})")
+        elif rsi > 55:
+            score += 5;  reasons.append(f"RSI bullish ({rsi:.1f})")
+        elif rsi < 45:
+            score -= 5;  reasons.append(f"RSI bearish ({rsi:.1f})")
+
+        # MACD
+        if macd_cross == "BULLISH" and macd_hist > 0:
+            score += 12; reasons.append("MACD bullish crossover + positive hist")
+        elif macd_cross == "BEARISH" and macd_hist < 0:
+            score -= 12; reasons.append("MACD bearish crossover + negative hist")
+        elif macd_cross == "BULLISH":
+            score += 5;  reasons.append("MACD bullish cross")
+        else:
+            score -= 5;  reasons.append("MACD bearish cross")
+
+        # EMA alignment
+        if curr_price > ema20 > ema50 > ema200:
+            score += 18; reasons.append("Strong uptrend: price>EMA20>EMA50>EMA200")
+        elif curr_price < ema20 < ema50 < ema200:
+            score -= 18; reasons.append("Strong downtrend: price<EMA20<EMA50<EMA200")
+        elif curr_price > ema20 > ema50:
+            score += 10; reasons.append("Uptrend: price>EMA20>EMA50")
+        elif curr_price < ema20 < ema50:
+            score -= 10; reasons.append("Downtrend: price<EMA20<EMA50")
+
+        # Bollinger
+        if curr_price < bb_lower:
+            score += 10; reasons.append("Price below BB lower – oversold")
+        elif curr_price > bb_upper:
+            score -= 10; reasons.append("Price above BB upper – overbought")
+
+        # ADX
+        if adx_val > 25 and dip > dim:
+            score += 8;  reasons.append(f"Strong uptrend ADX={adx_val:.1f} +DI>{dim:.1f}")
+        elif adx_val > 25 and dim > dip:
+            score -= 8;  reasons.append(f"Strong downtrend ADX={adx_val:.1f} -DI>{dip:.1f}")
+
+        # Volume surge
+        if vol_ratio > 1.5 and float(close.iloc[-1]) > float(close.iloc[-2]):
+            score += 8;  reasons.append(f"Volume surge ({vol_ratio:.1f}x) on up candle")
+        elif vol_ratio > 1.5 and float(close.iloc[-1]) < float(close.iloc[-2]):
+            score -= 8;  reasons.append(f"Volume surge ({vol_ratio:.1f}x) on down candle")
+
+        # ── Volume Profile scoring ────────────────────────────
+        if vp_signal == "ABOVE_VA":
+            score += 10; reasons.append("Price above Value Area (bullish breakout)")
+        elif vp_signal == "BELOW_VA":
+            score -= 10; reasons.append("Price below Value Area (bearish breakdown)")
+        elif vp_signal == "AT_POC":
+            score += 0;  reasons.append("Price at POC – key decision zone")
+        elif vp_signal == "ABOVE_POC":
+            score += 5;  reasons.append("Price above POC – slight bullish bias")
+        elif vp_signal == "BELOW_POC":
+            score -= 5;  reasons.append("Price below POC – slight bearish bias")
+
+        # ── Order Book Flow scoring ───────────────────────────
+        if ob_signal == "STRONG_BUY_FLOW":
+            score += 15; reasons.append("Strong buy order flow + delta positive")
+        elif ob_signal == "BUY_FLOW":
+            score += 8;  reasons.append("Buy order flow dominance")
+        elif ob_signal == "STRONG_SELL_FLOW":
+            score -= 15; reasons.append("Strong sell order flow + delta negative")
+        elif ob_signal == "SELL_FLOW":
+            score -= 8;  reasons.append("Sell order flow dominance")
+
+        if bid_walls_exist and not ask_walls_exist:
+            score += 5;  reasons.append("Bid wall detected – support present")
+        elif ask_walls_exist and not bid_walls_exist:
+            score -= 5;  reasons.append("Ask wall detected – resistance present")
+
+        # ── Liquidity Sweep scoring ───────────────────────────
+        if sweep_signal == "LONG_BIAS":
+            score += 12; reasons.append(f"Recent BULLISH sweep – smart money long entry")
+        elif sweep_signal == "SHORT_BIAS":
+            score -= 12; reasons.append(f"Recent BEARISH sweep – smart money short entry")
+
+        if near_inducement:
+            reasons.append("⚠ Price near inducement zone – sweep likely incoming")
+            score = max(20, min(80, score))  # Force caution band
+
+        # Cap and determine final label
+        score = max(0, min(100, score))
+
+        if score >= 80:
+            label = "STRONG BUY";    rec = "GO LONG";        color = "success"
+        elif score >= 65:
+            label = "BUY";           rec = "Consider Long";  color = "info"
+        elif score >= 50:
+            label = "SLIGHT BULLISH";rec = "Hold / Small Long"; color = "info"
+        elif score >= 40:
+            label = "NEUTRAL";       rec = "Wait";           color = "secondary"
+        elif score >= 30:
+            label = "SLIGHT BEARISH";rec = "Hold / Small Short"; color = "warning"
+        elif score >= 20:
+            label = "SELL";          rec = "Consider Short"; color = "warning"
+        else:
+            label = "STRONG SELL";   rec = "GO SHORT";       color = "danger"
+
+        # Stop loss & take profit based on ATR
+        if "BUY" in label or "BULLISH" in label:
+            stop_loss  = curr_price - 1.5 * atr
+            tp1        = curr_price + 1.5 * atr
+            tp2        = curr_price + 3.0 * atr
+        else:
+            stop_loss  = curr_price + 1.5 * atr
+            tp1        = curr_price - 1.5 * atr
+            tp2        = curr_price - 3.0 * atr
+
+        risk_pct  = abs(curr_price - stop_loss) / curr_price * 100
+        rr_ratio  = abs(tp1 - curr_price) / abs(curr_price - stop_loss) if abs(curr_price-stop_loss) > 0 else 1.0
+
+        return jsonify({
+            "success":        True,
+            "symbol":         symbol,
+            "timeframe":      timeframe,
+            "current_price":  round(curr_price, 6),
+            "signal":         label,
+            "recommendation": rec,
+            "score":          round(score, 1),
+            "color":          color,
+            "reasons":        reasons,
+            "indicators": {
+                "rsi":         round(rsi, 2),
+                "macd_hist":   round(macd_hist, 6),
+                "macd_cross":  macd_cross,
+                "ema20":       round(ema20, 6),
+                "ema50":       round(ema50, 6),
+                "ema200":      round(ema200, 6),
+                "bb_upper":    round(bb_upper, 6),
+                "bb_lower":    round(bb_lower, 6),
+                "adx":         round(adx_val, 2),
+                "di_plus":     round(dip, 2),
+                "di_minus":    round(dim, 2),
+                "atr":         round(atr, 6),
+                "atr_pct":     round(atr_pct, 3),
+                "volume_ratio": round(vol_ratio, 2)
+            },
+            "volume_profile": {
+                "signal": vp_signal,
+                "poc":    round(poc_price, 6),
+                "vah":    round(vah_price, 6),
+                "val":    round(val_price, 6)
+            },
+            "order_book_flow": {
+                "signal":        ob_signal,
+                "cumulative_delta": round(cum_delta, 4),
+                "flow_ratio":    round(flow_ratio, 4),
+                "bid_walls":     bid_walls_exist,
+                "ask_walls":     ask_walls_exist
+            },
+            "liquidity_sweep": {
+                "signal":          sweep_signal,
+                "recent_sweep":    recent_sweep_type,
+                "near_inducement": near_inducement
+            },
+            "trading_levels": {
+                "stop_loss":  round(stop_loss, 6),
+                "take_profit_1": round(tp1, 6),
+                "take_profit_2": round(tp2, 6),
+                "risk_pct":   round(risk_pct, 3),
+                "rr_ratio":   round(rr_ratio, 2)
+            },
+            "timestamp": datetime.utcnow().isoformat()
+        })
+
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return jsonify({"success": False, "error": str(e)}), 500
+    #END
+
+# ========= MAIN =========
+if __name__ == "__main__":
+    print("🚀 SUPER BOT v4.1 Starting...")
+    print("📊 Database: crypto_data")
+    print("🌐 WebSocket: Real-time order flow enabled with 10 EXCHANGES")
+    print("🔗 API: http://0.0.0.0:8000")
+    print("=" * 50)
+    print("🎯 ENHANCED PREDICTION SYSTEM READY WITH:")
+    print("  • Multi-timeframe analysis (1H, 4H, 1D, 1W)")
+    print("  • Long/Short signals with confidence levels")
+    print("  • Support/Resistance levels")
+    print("  • TradingView chart integration")
+    print("  • Prediction history tracking")
+    print("  • Technical analysis summary")
+    print("  • NEW: 10 Exchange Real-Time Analysis")
+    print("  • NEW: Futures Support (Binance, Bybit, OKX)")
+    print("  • NEW: Long/Short Ratio & Liquidation Levels")
+    print("=" * 50)
+    
+    # Test database connection
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("SHOW TABLES")
+        tables = [table[0] for table in cur.fetchall()]
+        print(f"✅ Database connected. Found {len(tables)} tables.")
+        
+        # Check for required tables
+        required_tables = ['ohlcv_data', 'patterns_1h', 'weights_close_1h']
+        for table in required_tables:
+            if table in tables:
+                print(f"   ✓ {table} exists")
+            else:
+                print(f"   ⚠️ {table} missing - some features may not work")
+        
+        # Check pattern tables
+        pattern_tables = [t for t in tables if t.startswith('patterns_')]
+        if pattern_tables:
+            print(f"   Found pattern tables: {', '.join(pattern_tables)}")
+        else:
+            print("   ⚠️ No pattern tables found - train the model first")
+        
+        cur.close()
+        conn.close()
+    except Exception as e:
+        print(f"❌ Database connection failed: {e}")
+        print("   Please check MySQL is running and database 'crypto_data' exists")
+    
+    print("\n📝 ENHANCED WORKFLOW:")
+    print("1. Fetch data (OHLCV tab)")
+    print("2. Train model (Train Bot tab)")
+    print("3. Go to Real-Time Analysis tab for live order book & trade analysis")
+    print("4. View TradingView chart and signals in Predictions tab")
+    print("\n⚡ Starting server with 10 exchanges...")
+    
+    # Start WebSockets with initial symbol
+    start_websockets()
+    
+    # Add a small delay to let WebSockets connect
+    print("⏳ Waiting for WebSocket connections to establish...")
+    time.sleep(3)
+    
+    # Check initial WebSocket status
+    # Removed Kucoin from code "kucoin", 
+    print("\n🔍 Initial WebSocket status for 10 exchanges:")
+    exchanges_list = ["binance", "bybit", "okx", "gateio", "huobi", "kraken", "bitget", "mexc", "coinbase"]
+    for exchange in exchanges_list:
+        book = real_time_data["order_book"][exchange]
+        if book["bids"] or book["asks"]:
+            print(f"   {exchange}: ✓ Connected")
+        else:
+            print(f"   {exchange}: ⚠️ Waiting for data...")
+    
+    print("\n✅ Server ready! Use /verify_symbol endpoint to check WebSocket status.")
+    print("✅ Use /set_symbol endpoint to change live tracking symbol and market type.")
+    print("✅ Real-Time Analysis tab ready for 10 exchange order book & trade analysis!")
+    print("✅ Enhanced Predictions tab ready for multi-timeframe analysis!")
+    
+    app.run(host="0.0.0.0", port=8000, debug=False, threaded=True)

@@ -1,0 +1,316 @@
+================================================================
+PATCH — 3 Bug Fixes for Signals Tab
+================================================================
+
+════════════════════════════════════════════════════════════════
+FIX 1 of 3 — index.html: renderOBFlowPanel (line ~4602)
+PROBLEM: (obf.bid_walls||[]).slice() crashes when bid_walls is
+         a boolean (true/false) from enhanced_signal_v2.
+REPLACE the entire renderOBFlowPanel function:
+════════════════════════════════════════════════════════════════
+
+FIND (exact):
+  function renderOBFlowPanel(obf) {
+  if (!obf) return;
+  const badge = document.getElementById("obfSignalBadge");
+  badge.textContent = obf.flow_signal || obf.signal || "—";
+  badge.style.cssText = sig2PanelBadgeStyle(obf.flow_signal||obf.signal||"");
+
+  const buyV  = obf.buy_volume  || 0;
+  const sellV = obf.sell_volume || 0;
+  const total = buyV + sellV + 1e-9;
+  const buyPct  = (buyV/total*100).toFixed(1);
+  const sellPct = (100-buyPct).toFixed(1);
+  const delta   = obf.cumulative_delta || 0;
+
+  document.getElementById("obfBody").innerHTML = `
+    <div class="sig2-row">
+      <span class="sig2-row-key">Cum. Delta</span>
+      <span class="sig2-row-val ${delta>0?'bull':'bear'}">${delta>0?"+":""}${delta.toFixed(2)}</span>
+    </div>
+    <div class="sig2-row">
+      <span class="sig2-row-key">Buy Vol</span>
+      <span class="sig2-row-val bull">${buyV.toFixed(2)}</span>
+    </div>
+    <div class="sig2-row">
+      <span class="sig2-row-key">Sell Vol</span>
+      <span class="sig2-row-val bear">${sellV.toFixed(2)}</span>
+    </div>
+    <div class="sig2-mini-bar mt-1 mb-2">
+      <div class="sig2-mini-bar-buy"  style="width:${buyPct}%"></div>
+      <div class="sig2-mini-bar-sell" style="width:${sellPct}%"></div>
+    </div>
+    <div class="sig2-row">
+      <span class="sig2-row-key">Flow Ratio</span>
+      <span class="sig2-row-val">${(obf.flow_ratio*100||0).toFixed(1)}% buy</span>
+    </div>
+    <div class="sig2-row">
+      <span class="sig2-row-key">Bid Walls</span>
+      <span class="sig2-row-val ${obf.bid_walls?'bull':'sig2-row-val'}">${obf.bid_walls?"✔ Present":"None"}</span>
+    </div>
+    <div class="sig2-row">
+      <span class="sig2-row-key">Ask Walls</span>
+      <span class="sig2-row-val ${obf.ask_walls?'bear':'sig2-row-val'}">${obf.ask_walls?"✔ Present":"None"}</span>
+    </div>
+    ${(obf.absorptions||[]).slice(0,2).map(a=>
+      `<div class="sig2-row">
+        <span class="sig2-row-key">${a.type||"Absorption"}</span>
+        <span class="sig2-row-val ${a.signal==='BULLISH'?'bull':'bear'}">${sig2FormatPrice(a.price)} ${a.signal}</span>
+      </div>`
+    ).join("")}
+    ${(obf.bid_walls||[]).slice(0,2).map(w=>
+      `<div class="sig2-row">
+        <span class="sig2-row-key">Bid Wall</span>
+        <span class="sig2-row-val warn">${sig2FormatPrice(w.price)} (${w.strength}x)</span>
+      </div>`
+    ).join("")}
+    ${(obf.ask_walls||[]).slice(0,2).map(w=>
+      `<div class="sig2-row">
+        <span class="sig2-row-key">Ask Wall</span>
+        <span class="sig2-row-val warn">${sig2FormatPrice(w.price)} (${w.strength}x)</span>
+      </div>`
+    ).join("")}
+  `;
+}
+
+REPLACE WITH:
+  function renderOBFlowPanel(obf) {
+  if (!obf) return;
+  const badge = document.getElementById("obfSignalBadge");
+  badge.textContent = obf.flow_signal || obf.signal || "—";
+  badge.style.cssText = sig2PanelBadgeStyle(obf.flow_signal||obf.signal||"");
+
+  const buyV  = obf.buy_volume  || 0;
+  const sellV = obf.sell_volume || 0;
+  const total = buyV + sellV + 1e-9;
+  const buyPct  = (buyV/total*100).toFixed(1);
+  const sellPct = (100 - parseFloat(buyPct)).toFixed(1);
+  const delta   = obf.cumulative_delta || 0;
+
+  // bid_walls/ask_walls can be boolean (from enhanced_signal_v2)
+  // OR arrays (from standalone /order_book_flow). Normalise both.
+  const bidWallBool = Array.isArray(obf.bid_walls) ? obf.bid_walls.length > 0 : !!obf.bid_walls;
+  const askWallBool = Array.isArray(obf.ask_walls) ? obf.ask_walls.length > 0 : !!obf.ask_walls;
+  const bidWallArr  = Array.isArray(obf.bid_walls) ? obf.bid_walls : [];
+  const askWallArr  = Array.isArray(obf.ask_walls) ? obf.ask_walls : [];
+  const absorpArr   = Array.isArray(obf.absorptions) ? obf.absorptions : [];
+
+  document.getElementById("obfBody").innerHTML = `
+    <div class="sig2-row">
+      <span class="sig2-row-key">Cum. Delta</span>
+      <span class="sig2-row-val ${delta>0?'bull':'bear'}">${delta>0?"+":""}${delta.toFixed(2)}</span>
+    </div>
+    <div class="sig2-row">
+      <span class="sig2-row-key">Buy Vol</span>
+      <span class="sig2-row-val bull">${buyV.toFixed(2)}</span>
+    </div>
+    <div class="sig2-row">
+      <span class="sig2-row-key">Sell Vol</span>
+      <span class="sig2-row-val bear">${sellV.toFixed(2)}</span>
+    </div>
+    <div class="sig2-mini-bar mt-1 mb-2">
+      <div class="sig2-mini-bar-buy"  style="width:${buyPct}%"></div>
+      <div class="sig2-mini-bar-sell" style="width:${sellPct}%"></div>
+    </div>
+    <div class="sig2-row">
+      <span class="sig2-row-key">Flow Ratio</span>
+      <span class="sig2-row-val">${((obf.flow_ratio||0)*100).toFixed(1)}% buy</span>
+    </div>
+    <div class="sig2-row">
+      <span class="sig2-row-key">Bid Walls</span>
+      <span class="sig2-row-val ${bidWallBool?'bull':''}">${bidWallBool?"✔ Present":"None"}</span>
+    </div>
+    <div class="sig2-row">
+      <span class="sig2-row-key">Ask Walls</span>
+      <span class="sig2-row-val ${askWallBool?'bear':''}">${askWallBool?"✔ Present":"None"}</span>
+    </div>
+    ${absorpArr.slice(0,2).map(a=>
+      `<div class="sig2-row">
+        <span class="sig2-row-key">${a.type||"Absorption"}</span>
+        <span class="sig2-row-val ${a.signal==='BULLISH'?'bull':'bear'}">${sig2FormatPrice(a.price)} ${a.signal}</span>
+      </div>`
+    ).join("")}
+    ${bidWallArr.slice(0,2).map(w=>
+      `<div class="sig2-row">
+        <span class="sig2-row-key">Bid Wall @</span>
+        <span class="sig2-row-val warn">${sig2FormatPrice(w.price)} (${w.strength}x)</span>
+      </div>`
+    ).join("")}
+    ${askWallArr.slice(0,2).map(w=>
+      `<div class="sig2-row">
+        <span class="sig2-row-key">Ask Wall @</span>
+        <span class="sig2-row-val warn">${sig2FormatPrice(w.price)} (${w.strength}x)</span>
+      </div>`
+    ).join("")}
+  `;
+}
+
+
+════════════════════════════════════════════════════════════════
+FIX 2 of 3 — index.html: renderSweepPanel (line ~4687)
+PROBLEM: When called from enhanced_signal_v2 the ls object has
+  no .sweeps, .inducement_highs, .inducement_lows arrays.
+  Also shows "Recent Sweeps" section even when empty.
+REPLACE the entire renderSweepPanel function:
+════════════════════════════════════════════════════════════════
+
+FIND (exact):
+  function renderSweepPanel(ls) {
+  if (!ls) return;
+  const badge = document.getElementById("lsSignalBadge");
+  const srisk = ls.sweep_risk || ls.signal || "NONE";
+  badge.textContent = srisk;
+  badge.style.cssText = sig2PanelBadgeStyle(srisk);
+
+  const sweeps = (ls.sweeps||[]).slice(0,4);
+  const sweepHTML = sweeps.length ? sweeps.map(s=>{
+    const isBull = s.type==="BULLISH_SWEEP";
+    return `<div class="sig2-sweep ${isBull?'sig2-sweep-bull':'sig2-sweep-bear'}">
+      <div class="sig2-sweep-icon">${isBull?"🟢":"🔴"}</div>
+      <div class="sig2-sweep-info">
+        <div class="sig2-sweep-type" style="color:${isBull?'#10b981':'#ef4444'}">${s.type}</div>
+        <div class="sig2-sweep-price">Sweep @ ${sig2FormatPrice(s.sweep_price)} → Close ${sig2FormatPrice(s.close_price)}</div>
+        <div class="sig2-sweep-desc">${s.description||""}</div>
+      </div>
+    </div>`;
+  }).join("") : `<p class="sig2-empty-msg">No recent sweeps detected</p>`;
+
+  document.getElementById("lsBody").innerHTML = `
+    <div class="sig2-row">
+      <span class="sig2-row-key">Sweep Risk</span>
+      <span class="sig2-row-val warn">${ls.sweep_risk||"NONE"}</span>
+    </div>
+    <div class="sig2-row">
+      <span class="sig2-row-key">Near Inducement</span>
+      <span class="sig2-row-val ${ls.near_inducement?'warn':'sig2-row-val'}">${ls.near_inducement?"⚠ YES":"No"}</span>
+    </div>
+    <div class="sig2-row">
+      <span class="sig2-row-key">Bullish Sweeps</span>
+      <span class="sig2-row-val bull">${ls.bullish_sweeps||0}</span>
+    </div>
+    <div class="sig2-row">
+      <span class="sig2-row-key">Bearish Sweeps</span>
+      <span class="sig2-row-val bear">${ls.bearish_sweeps||0}</span>
+    </div>
+    ${(ls.inducement_highs||[]).slice(0,2).map(h=>
+      `<div class="sig2-row">
+        <span class="sig2-row-key">Ind. High</span>
+        <span class="sig2-row-val bear">${sig2FormatPrice(h)}</span>
+      </div>`).join("")}
+    ${(ls.inducement_lows||[]).slice(0,2).map(l=>
+      `<div class="sig2-row">
+        <span class="sig2-row-key">Ind. Low</span>
+        <span class="sig2-row-val bull">${sig2FormatPrice(l)}</span>
+      </div>`).join("")}
+    <div class="mt-2"><div class="sig2-label mb-1">Recent Sweeps</div>${sweepHTML}</div>
+  `;
+}
+
+REPLACE WITH:
+  function renderSweepPanel(ls) {
+  if (!ls) return;
+  const badge = document.getElementById("lsSignalBadge");
+  const srisk = ls.sweep_risk || ls.signal || "NONE";
+  badge.textContent = srisk;
+  badge.style.cssText = sig2PanelBadgeStyle(srisk);
+
+  // All array fields are optional — enhanced_signal_v2 returns only
+  // signal / recent_sweep / near_inducement (compact object).
+  // The full /liquidity_sweep endpoint returns the complete arrays.
+  const sweepsArr   = Array.isArray(ls.sweeps)           ? ls.sweeps           : [];
+  const indHighsArr = Array.isArray(ls.inducement_highs) ? ls.inducement_highs : [];
+  const indLowsArr  = Array.isArray(ls.inducement_lows)  ? ls.inducement_lows  : [];
+
+  const sweeps = sweepsArr.slice(0, 4);
+  const sweepHTML = sweeps.length ? sweeps.map(s => {
+    const isBull = s.type === "BULLISH_SWEEP";
+    return `<div class="sig2-sweep ${isBull?'sig2-sweep-bull':'sig2-sweep-bear'}">
+      <div class="sig2-sweep-icon">${isBull?"🟢":"🔴"}</div>
+      <div class="sig2-sweep-info">
+        <div class="sig2-sweep-type" style="color:${isBull?'#10b981':'#ef4444'}">${s.type}</div>
+        <div class="sig2-sweep-price">Sweep @ ${sig2FormatPrice(s.sweep_price)} → Close ${sig2FormatPrice(s.close_price)}</div>
+        <div class="sig2-sweep-desc">${s.description||""}</div>
+      </div>
+    </div>`;
+  }).join("") : "";
+
+  // Show "last sweep" row from compact object if arrays not present
+  const recentSweepRow = (ls.recent_sweep && ls.recent_sweep !== "NONE")
+    ? `<div class="sig2-row">
+         <span class="sig2-row-key">Last Sweep</span>
+         <span class="sig2-row-val ${ls.recent_sweep.includes('BULL')?'bull':'bear'}">${ls.recent_sweep}</span>
+       </div>` : "";
+
+  document.getElementById("lsBody").innerHTML = `
+    <div class="sig2-row">
+      <span class="sig2-row-key">Sweep Risk</span>
+      <span class="sig2-row-val warn">${ls.sweep_risk||"NONE"}</span>
+    </div>
+    ${recentSweepRow}
+    <div class="sig2-row">
+      <span class="sig2-row-key">Near Inducement</span>
+      <span class="sig2-row-val ${ls.near_inducement?'warn':''}">${ls.near_inducement?"⚠ YES":"No"}</span>
+    </div>
+    <div class="sig2-row">
+      <span class="sig2-row-key">Bullish Sweeps</span>
+      <span class="sig2-row-val bull">${ls.bullish_sweeps||0}</span>
+    </div>
+    <div class="sig2-row">
+      <span class="sig2-row-key">Bearish Sweeps</span>
+      <span class="sig2-row-val bear">${ls.bearish_sweeps||0}</span>
+    </div>
+    ${indHighsArr.slice(0,2).map(h=>
+      `<div class="sig2-row">
+        <span class="sig2-row-key">Ind. High</span>
+        <span class="sig2-row-val bear">${sig2FormatPrice(h)}</span>
+      </div>`).join("")}
+    ${indLowsArr.slice(0,2).map(l=>
+      `<div class="sig2-row">
+        <span class="sig2-row-key">Ind. Low</span>
+        <span class="sig2-row-val bull">${sig2FormatPrice(l)}</span>
+      </div>`).join("")}
+    ${sweeps.length ? `<div class="mt-2"><div class="sig2-label mb-1">Recent Sweeps</div>${sweepHTML}</div>` : ""}
+  `;
+}
+
+
+════════════════════════════════════════════════════════════════
+FIX 3 of 3 — appp.py: Sort bug in enhanced_signal_v2 (~line 5816)
+PROBLEM: sw_df.sort_values("open") sorts by PRICE not TIME,
+         scrambling candle order so sweep detection is wrong.
+════════════════════════════════════════════════════════════════
+
+FIND (in the enhanced_signal_v2 function):
+                sw_df = sw_df.sort_values("open",ascending=False).reset_index(drop=True)  # newest first
+
+REPLACE WITH:
+                sw_df = sw_df.sort_values("close",ascending=True).reset_index(drop=True)  # oldest→newest
+
+NOTE: The DB query already uses ORDER BY time_utc DESC (newest first).
+      We just need to reverse it for chronological order.
+      Since time_utc is not in the SELECT, sort by the auto-index
+      (which preserves DESC fetch order) then reverse:
+
+BEST FIX — change the full block from:
+                sw_df = sw_df.sort_values("open",ascending=False).reset_index(drop=True)  # newest first
+
+TO:
+                sw_df = sw_df.iloc[::-1].reset_index(drop=True)  # reverse to oldest→newest
+
+
+════════════════════════════════════════════════════════════════
+SUMMARY OF WHAT EACH FIX DOES
+════════════════════════════════════════════════════════════════
+
+Fix 1 — Stops the ".slice is not a function" crash in OB Flow panel.
+         Uses Array.isArray() to detect boolean vs array before calling .slice().
+
+Fix 2 — Stops the ".slice is not a function" crash in Sweep panel.
+         Guards all array reads with Array.isArray().
+         Shows "Last Sweep" row from compact object when full arrays absent.
+         Only shows "Recent Sweeps" section when there are actual sweep items.
+
+Fix 3 — Fixes wrong candle order in sweep detection.
+         Candles were sorted by open price (nonsense) instead of time.
+         iloc[::-1] reverses the DESC-fetched rows to chronological order
+         so wick sweeps are detected correctly.

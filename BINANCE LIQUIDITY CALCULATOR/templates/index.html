@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Binance Futures Calculator</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <div class="header-content">
+                <h1 class="title">Binance Futures Calculator</h1>
+                <p class="subtitle">Calculate liquidation prices, P&L, and monitor funding rates</p>
+            </div>
+        </header>
+
+        <div class="main-grid">
+            <!-- Price Ticker Section -->
+            <section class="card price-card">
+                <h2 class="card-title">Live Price</h2>
+                <div class="input-group">
+                    <input 
+                        type="text" 
+                        id="priceSymbol" 
+                        placeholder="BTCUSDT" 
+                        class="input-field"
+                        value="BTCUSDT"
+                    >
+                    <button onclick="fetchPrice()" class="btn btn-primary">Get Price</button>
+                </div>
+                <div id="priceResult" class="result-box"></div>
+            </section>
+
+            <!-- Funding Rate Section -->
+            <section class="card funding-card">
+                <h2 class="card-title">Funding Rate</h2>
+                <div class="input-group">
+                    <input 
+                        type="text" 
+                        id="fundingSymbol" 
+                        placeholder="BTCUSDT" 
+                        class="input-field"
+                        value="BTCUSDT"
+                    >
+                    <button onclick="fetchFunding()" class="btn btn-primary">Get Funding</button>
+                </div>
+                <div id="fundingResult" class="result-box"></div>
+            </section>
+
+            <!-- Liquidation Calculator -->
+            <section class="card liquidation-card">
+                <h2 class="card-title">Liquidation Calculator</h2>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Entry Price</label>
+                        <input 
+                            type="number" 
+                            id="liqEntryPrice" 
+                            placeholder="50000" 
+                            class="input-field"
+                            step="0.01"
+                        >
+                    </div>
+                    <div class="form-group">
+                        <label>Leverage</label>
+                        <input 
+                            type="number" 
+                            id="liqLeverage" 
+                            placeholder="10" 
+                            class="input-field"
+                            min="1"
+                            max="125"
+                        >
+                    </div>
+                    <div class="form-group full-width">
+                        <label>Position Type</label>
+                        <div class="toggle-group">
+                            <button class="toggle-btn active" data-value="long" onclick="selectPosition(this, 'liq')">
+                                Long
+                            </button>
+                            <button class="toggle-btn" data-value="short" onclick="selectPosition(this, 'liq')">
+                                Short
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <button onclick="calculateLiquidation()" class="btn btn-calculate">Calculate Liquidation</button>
+                <div id="liqResult" class="result-box"></div>
+            </section>
+
+            <!-- PNL Calculator -->
+            <section class="card pnl-card">
+                <h2 class="card-title">P&L Calculator</h2>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Entry Price</label>
+                        <input 
+                            type="number" 
+                            id="pnlEntryPrice" 
+                            placeholder="50000" 
+                            class="input-field"
+                            step="0.01"
+                        >
+                    </div>
+                    <div class="form-group">
+                        <label>Exit/Current Price</label>
+                        <input 
+                            type="number" 
+                            id="pnlExitPrice" 
+                            placeholder="51000" 
+                            class="input-field"
+                            step="0.01"
+                        >
+                    </div>
+                    <div class="form-group">
+                        <label>Position Size (USD)</label>
+                        <input 
+                            type="number" 
+                            id="pnlPositionSize" 
+                            placeholder="1000" 
+                            class="input-field"
+                            step="0.01"
+                        >
+                    </div>
+                    <div class="form-group">
+                        <label>Leverage</label>
+                        <input 
+                            type="number" 
+                            id="pnlLeverage" 
+                            placeholder="10" 
+                            class="input-field"
+                            min="1"
+                            max="125"
+                        >
+                    </div>
+                    <div class="form-group full-width">
+                        <label>Position Type</label>
+                        <div class="toggle-group">
+                            <button class="toggle-btn active" data-value="long" onclick="selectPosition(this, 'pnl')">
+                                Long
+                            </button>
+                            <button class="toggle-btn" data-value="short" onclick="selectPosition(this, 'pnl')">
+                                Short
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <button onclick="calculatePNL()" class="btn btn-calculate">Calculate P&L</button>
+                <div id="pnlResult" class="result-box"></div>
+            </section>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
